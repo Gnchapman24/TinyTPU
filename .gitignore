@@ -1,0 +1,39 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# cocotb / Verilator
+sim_build/
+results.xml
+*.vcd
+*.fst
+obj_dir/
+
+# SymbiYosys run directories (keep the .sby files)
+formal/*/
+
+# Vivado (run directories belong on a local Windows disk, but guard anyway)
+.Xil/
+*.jou
+*.log
+*.str
+*.dcp
+*.bit
+*.bin
+*.ltx
+*.rpt
+vivado_runs/
+syn/reports/
+
+# MkDocs
+site/
+docs/rtl/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
