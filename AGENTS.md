@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. The repo has no RTL, tests, or CI yet. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. The repo has tooling and CI but no RTL or tests yet. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -31,10 +31,10 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
   - The NumPy reference model uses `np.int32` throughout.
 - Output requantization is **decided (Option D)**:
   - **Unit:** one shared, pipelined requantization unit sits between the accumulator buffer and the output. It handles one value per cycle and uses about 2 DSP48E1s.
-  - **STORE modes:**
-    - **raw:** stream the INT32 accumulator unchanged (debugging, host-side schemes).
-    - **requant:** `y = clamp((acc * M + R) >>> s, lo, hi)`, where:
-      - `M` is a 16-bit unsigned multiplier and `s` is a 6-bit shift (0–63). Both are set per output column (per-channel scaling) in a scale table loaded by an instruction.
+  - **Modes:**
+    - **raw:** the host reads INT32 accumulators directly from the accumulator buffer while the sequencer is halted (debugging, host-side schemes).
+    - **requant** (the `REQUANT` instruction): `y = clamp((acc * M + R) >>> s, lo, hi)`, where:
+      - `M` is a 16-bit unsigned multiplier and `s` is a 6-bit shift (0–63). Both are set per output column (per-channel scaling) in the per-channel parameter table (§3).
       - `R = (s == 0) ? 0 : 2**(s-1)`, i.e. round half up.
       - The product `acc * M` is computed at full width (48 bits signed). Never truncate before the shift.
       - The clamp range comes from a ReLU bit: ReLU on gives UINT8 [0, 255], which feeds the next layer with `act_signed = 0`. ReLU off gives INT8 [−128, 127], which feeds the next layer with `act_signed = 1`.
@@ -77,13 +77,58 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
     - **Still open:** header, opcode, and payload layout are decided with the ISA.
   - UART bandwidth, not compute, limits end-to-end throughput. Don't over-optimize the array at the expense of simplicity.
 - **Control:** custom minimal ISA (load weights, load activations, matmul, store/read results).
-  - The single source of truth is `docs/isa.md` **(planned)**.
+  - **Execution model is decided: stored program.**
+    - The host uploads a program into an on-chip instruction memory (BRAM), plus the model's weights, then sends RUN. An on-chip sequencer executes the program until HALT, without host round trips.
+    - Goal: real-time inference, where only each inference's input and output cross the UART, and weights stay resident on-chip.
+    - Instructions execute in order, one at a time; each completes before the next starts. No pipelining between instructions, so no hazards between them.
+    - **Control flow is decided: macro (tiled) instructions in a straight-line program.**
+      - The program counter only advances, until HALT. There are no branches, loops, or scalar registers.
+      - One MATMUL instruction covers a whole layer. Its fields give base addresses (weights, activations, accumulators), K-tile and N-tile counts, the number of activation rows, and accumulate/overwrite.
+      - A hardware **address generator** runs the nested tile loops for each instruction.
+      - Data-dependent steps (e.g. argmax) are done on the host.
+    - **Encoding is decided: fixed 128-bit instructions**, one per instruction-memory row, sent to the FPGA as 16 bytes.
+      - Reserved bits must be zero.
+      - An illegal opcode or a non-zero reserved bit halts the sequencer with an error status and the faulting PC.
+      - Instruction-memory depth is a parameter, default 128. Whether it is LUT RAM or BRAM is decided in J1.4.
+      - Field positions are fixed in `docs/isa.md`.
+    - **Addressing is decided: canonical layouts, N-relative units, base addresses only (no strides).**
+      - **Units:** weights in N×N tiles, activations in N-element vectors, accumulators in rows of N × INT32.
+      - **Layouts**, with KT = K/N and NT = Nout/N:
+        - weights `w_base + n*KT + k`
+        - activations `a_base + m*KT + k`
+        - accumulators `acc_base + m*NT + n`
+      - The host compiler rearranges data into these layouts on upload.
+      - **Padding:** the host zero-pads K and Nout to multiples of N, in weights and biases. M is not padded. Padded columns stay 0 through requantization.
+      - A requantized accumulator row `(m, n)` is exactly one activation vector at `m*NT + n`, i.e. already the canonical activation layout for the next layer, whose KT is this layer's NT.
+      - Stride fields may be added later as a new opcode variant; programs that don't use them are unaffected.
+    - **Instruction set is decided:**
+      - **Opcodes:** `0x00 HALT` (slot 1 = 16-bit halt code; all-zero memory therefore halts), `0x01 NOP`, `0x10 MATMUL`, `0x20 REQUANT`. All others are illegal.
+      - A typical layer is `MATMUL` (bias mode) + `REQUANT`.
+      - **Layout:** eight 16-bit slots, sent least-significant byte first.
+        - Slot 0: `[7:0]` opcode, `[15:8]` flags.
+        - Slots 1–7: `[31:16]` `w_base` or halt code; `[47:32]` `a_base` (MATMUL source) or `a_dst` (REQUANT destination); `[63:48]` `acc_base`; `[79:64]` `p_base`; `[95:80]` `kt`; `[111:96]` `nt`; `[127:112]` `m`.
+        - MATMUL flags: `[8]` act_signed, `[10:9]` acc_mode (00 overwrite, 01 accumulate, 10 bias, 11 illegal). REQUANT flags: `[8]` relu.
+        - Field bits beyond what a buffer needs, and unused slots or flags, are reserved and must be zero.
+      - **Per-channel parameter table:** entries of `{bias INT32, M u16, s u6}`, at `p_base + n*N + col`.
+        - MATMUL bias mode starts the first k-tile from `bias[col]`.
+        - REQUANT reads `M`/`s` from the same entries.
+      - **Write-back (closes J1.2):** REQUANT writes 8-bit results into the activation buffer at `a_dst + m*NT + n`. That is its only destination. The next layer reads from there, and the host reads final outputs from there.
+      - **Host I/O is not part of the ISA.** While the sequencer is halted, the host reads and writes buffers directly through protocol commands (raw INT32 results are read straight from the accumulator buffer).
+      - **Host commands (decided; byte layout is J1.3):**
+        - `INFO`: protocol version, N, `CLKS_PER_BIT`, buffer depths. The host compiler checks a model fits before uploading.
+        - `WRITE` / `READ` of the memories (instruction memory, weights, activations, accumulators, parameter table), in each memory's ISA unit.
+        - `RUN` (start PC): replies once the program halts, with the final status.
+        - `STATUS`, `ABORT`, `RESET`: `RESET` returns to idle and keeps memory; `btnC` does the same.
+        - `INFER`: writes the input, runs, and replies with status plus output data, in one round trip. It can be built after the other commands work.
+        - **While running:** only `STATUS`, `ABORT`, and `INFO` are accepted. Anything else gets a NAK with a busy code. The host never accesses a memory while the sequencer runs.
+      - **Error halts** record an error code and the faulting PC, for any of:
+        - illegal opcode, non-zero reserved bit, acc_mode 11, or a count of 0
+        - any generated address at or beyond its buffer's depth
+        - the PC running past the end of instruction memory
+    - The sequencer (program counter, fetch, decode) and the address-generator FSM are in scope for the formal tier, in particular loop bounds and termination. The address arithmetic itself is checked in cocotb.
+  - The single source of truth is `docs/isa.md`. It has full semantics, the error codes (draft numbering until J1.3), and a worked example program. The summary below must stay consistent with it.
   - Don't change opcodes or encodings without asking.
   - The matmul instruction carries an `act_signed` mode field (see §2).
-  - The ISA needs:
-    - a scale-table load instruction (per-column `M`, `s`)
-    - STORE fields for raw/requant mode and the ReLU bit
-  - **OPEN, to decide during ISA design:** whether requantized results can be written back to the activation buffer (on-chip layer chaining) instead of only going to the host.
   - Functional tests run in both activation modes.
 
 ## 4. Repository layout (planned)
