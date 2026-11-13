@@ -104,6 +104,22 @@ Keep generated output out of git: `sim_build/`, `*.vcd`/`*.fst`, `results.xml`, 
 
 ## 5. Verification (three tiers, planned)
 
+**Entry points:** the top-level `Makefile`, run in WSL. Run `make help` for the list.
+- `make lint`: every `rtl/` module through Verilator `-Wall` and yosys-slang, with `ASSERTIONS` defined. Must pass with zero warnings.
+- `make sim`: tier 1 at N = 2 and 4. Add `K=<pytest filter>` to select tests.
+- `make sim-full`: tier 1 at N = 8.
+- `make formal`: tier 2.
+- `make docs`, `make all`, `make clean`.
+
+The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via `uv run --locked`. It refuses to run if the installed suite release doesn't match `tools/versions.env`.
+
+**File conventions (`make` discovers these automatically):**
+- `rtl/*_pkg.sv` are packages; they are compiled first.
+- `tb/test_*.py` are pytest files. Each one builds with `cocotb_tools.runner` and runs its own cocotb tests. It reads the array size from the `TINYTPU_N` environment variable, passes it as the `N` parameter, and uses the build directory `sim_build/<name>_N<n>`.
+- `formal/<name>.sby` lists sources as `../rtl/...` in `[files]`.
+
+**Lint exception for the formal `past_valid` idiom:** its declaration-with-initializer triggers Verilator `PROCASSINIT`. Wrap only that declaration in `/* verilator lint_off PROCASSINIT */ ... /* verilator lint_on PROCASSINIT */`. No other lint suppressions without asking.
+
 1. **Functional: cocotb + Verilator**
    - Reference results come from NumPy using the same integer semantics as the RTL (same signedness, accumulator width, and requantization).
    - Compare bit-exactly; no tolerance.

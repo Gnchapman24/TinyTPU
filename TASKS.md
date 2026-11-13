@@ -23,7 +23,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | [x] A0.1 | Agent | Add `.gitignore` (per AGENTS.md §4), `.gitattributes` (`* text=auto eol=lf`; binary files marked as binary), and a short `README.md`. | — |
 | [x] A0.2 | Agent | Record the installed tool versions in `tools/versions.env`. Write `tools/setup.md` with the WSL and Windows setup steps. Also added `tools/env.sh`. | H0.1, H0.2 |
 | [x] A0.3 | Agent | Create `pyproject.toml` (Python 3.12) and `uv.lock` with cocotb, numpy, pyserial, pyslang, mkdocs, mkdocstrings[python]. | H0.2 |
-| [ ] A0.4 | Agent | Create a top-level `Makefile` with targets `sim`, `sim-full` (N = 8), `formal`, `docs`, `lint` (`verilator --lint-only`). Each target names the side it runs on. | A0.3 |
+| [x] A0.4 | Agent | Create a top-level `Makefile` with targets `sim`, `sim-full` (N = 8), `formal`, `docs`, `lint` (`verilator --lint-only`). Each target names the side it runs on. | A0.3 |
 | [ ] A0.5 | Agent | Create the `mkdocs.yml` skeleton, `docs/index.md`, and the `docs/gen_rtl_docs.py` generator (pyslang; strict failure on missing descriptions). | A0.3 |
 | [x] A0.6 | Agent | Fetch Digilent's official Basys3 master XDC and create a trimmed `syn/basys3.xdc` (clock, UART, reset, LEDs, switches). Confirm the pins against AGENTS.md §1. | — |
 | [ ] J0.7 | Joint | Confirm how Vivado handles the repo's WSL path. Agent: run a trivial batch synthesis from the `\\wsl.localhost` path. Human: map a drive letter if it fails. Update AGENTS.md §5a. | A0.6 |
