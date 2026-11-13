@@ -74,7 +74,16 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
       - check value for ASCII `"123456789"` = 0x29B1
     - **Replies and recovery:** the receiver answers ACK or NAK, and the host resends on NAK. Packets carry a length field, and the receiver discards a partial packet after a timeout.
     - **Testing:** check the CRC module in cocotb against the Python implementation; it is not formally verified. Inject flipped bits, dropped bytes, and bad CRCs.
-    - **Still open:** header, opcode, and payload layout are decided with the ISA.
+    - **Packet format is decided (J1.3); full spec in `docs/uart_protocol.md`:**
+      - **Shape:** request `A5 CMD SEQ LEN(u16) payload CRC`; reply `5A CODE SEQ LEN(u16) payload CRC`.
+        - The CRC covers everything after the sync byte, and is sent high byte first.
+        - All other multi-byte fields are little-endian.
+        - Maximum payload is 4096 bytes.
+      - **Duplicates:** the FPGA remembers the last executed `SEQ`. A repeat is answered without being re-executed.
+      - **Write-through:** `WRITE`/`INFER` data streams straight into memory, with no packet buffer. A bad CRC gives a NAK, and the host resends. Nothing executes before its CRC passes.
+      - **Timeouts and resync:**
+        - On the FPGA, a gap of more than 5 ms inside a packet discards it, with no reply.
+        - The host sends each packet in one `write()`, waits 10 ms of silence before any resend, and after 3 failures sends `RESET` and reports an error.
   - UART bandwidth, not compute, limits end-to-end throughput. Don't over-optimize the array at the expense of simplicity.
 - **Control:** custom minimal ISA (load weights, load activations, matmul, store/read results).
   - **Execution model is decided: stored program.**
@@ -126,7 +135,7 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
         - any generated address at or beyond its buffer's depth
         - the PC running past the end of instruction memory
     - The sequencer (program counter, fetch, decode) and the address-generator FSM are in scope for the formal tier, in particular loop bounds and termination. The address arithmetic itself is checked in cocotb.
-  - The single source of truth is `docs/isa.md`. It has full semantics, the error codes (draft numbering until J1.3), and a worked example program. The summary below must stay consistent with it.
+  - The single source of truth is `docs/isa.md`. It has full semantics, the error codes (1–6, confirmed in J1.3), and a worked example program. The summary below must stay consistent with it.
   - Don't change opcodes or encodings without asking.
   - The matmul instruction carries an `act_signed` mode field (see §2).
   - Functional tests run in both activation modes.

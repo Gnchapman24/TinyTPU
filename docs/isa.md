@@ -4,7 +4,7 @@ This page is the single source of truth for the TinyTPU ISA. The RTL (`rtl/isa_p
 
 Two related pages fill in the rest:
 
-- **UART protocol** (`docs/uart_protocol.md`, planned in task J1.3): byte layout of host commands
+- [UART protocol](uart_protocol.md): byte layout of host commands
 - **Memory map** (`docs/memory_map.md`, planned in task J1.4): buffer depths, and therefore how many bits of each address field are implemented
 
 ## Execution model
@@ -141,7 +141,7 @@ for n in 0 .. nt-1:
 
 ## Errors
 
-The sequencer halts with status **halted error**, an error code, and the faulting PC when any of these happen. The code numbers are a draft, to be confirmed with the UART protocol (J1.3).
+The sequencer halts with status **halted error**, an error code, and the faulting PC when any of these happen. The host sees them in the status block's error field (see the [UART protocol](uart_protocol.md#status-block)).
 
 | Code | Condition |
 |---|---|
@@ -156,7 +156,7 @@ Codes 1–4 are detected at decode, before any memory is changed. Code 5 is dete
 
 ## Host interaction
 
-Host commands are not instructions. They are handled by the protocol engine around the sequencer. Byte layouts are in the UART protocol page (J1.3).
+Host commands are not instructions. They are handled by the protocol engine around the sequencer. Byte layouts are in the [UART protocol](uart_protocol.md).
 
 | Command | Effect | Allowed while running |
 |---|---|---|
