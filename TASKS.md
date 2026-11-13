@@ -16,13 +16,13 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | ID | Owner | Task | Depends on |
 |---|---|---|---|
 | [x] H0.1 | Human | Install the latest OSS CAD Suite **dated release** in WSL at `~/tools/oss-cad-suite`. Installed release 20261112 and smoke-tested. It goes on PATH per project via `source tools/env.sh`, not in the shell profile. | — |
-| [ ] H0.2 | Human | Install `uv` in WSL and on Windows. | — |
+| [~] H0.2 | Human | Install `uv` in WSL and on Windows. WSL has 0.13.8 (OK). Windows has 0.11.26, below the 0.13.8 minimum: run `uv self update`, then set up the host venv per `tools/setup.md`. | — |
 | [ ] H0.3 | Human | Set the FTDI latency timer to 1 ms: Windows Device Manager → the Basys3 COM port → Port Settings → Advanced. | — |
 | [ ] H0.4 | Human | Check that Vivado 2025.2 Hardware Manager detects the Basys3. Install the cable drivers if it doesn't. | — |
 | [ ] H0.5 | Human | Delete the empty leftover folder `C:\Users\Grant\HOME\PROJECTS\TPU\TinyTPU` once no app has it open. | — |
 | [x] A0.1 | Agent | Add `.gitignore` (per AGENTS.md §4), `.gitattributes` (`* text=auto eol=lf`; binary files marked as binary), and a short `README.md`. | — |
-| [~] A0.2 | Agent | Record the installed tool versions in `tools/versions.env`. Write `tools/setup.md` with the WSL and Windows setup steps. OSS CAD Suite, Vivado, and Python pins are recorded, and `tools/env.sh` is added. Still to do: the uv version and `tools/setup.md`. | H0.1, H0.2 |
-| [ ] A0.3 | Agent | Create `pyproject.toml` (Python 3.12) and `uv.lock` with cocotb, numpy, pyserial, pyslang, mkdocs, mkdocstrings[python]. | H0.2 |
+| [x] A0.2 | Agent | Record the installed tool versions in `tools/versions.env`. Write `tools/setup.md` with the WSL and Windows setup steps. Also added `tools/env.sh`. | H0.1, H0.2 |
+| [x] A0.3 | Agent | Create `pyproject.toml` (Python 3.12) and `uv.lock` with cocotb, numpy, pyserial, pyslang, mkdocs, mkdocstrings[python]. | H0.2 |
 | [ ] A0.4 | Agent | Create a top-level `Makefile` with targets `sim`, `sim-full` (N = 8), `formal`, `docs`, `lint` (`verilator --lint-only`). Each target names the side it runs on. | A0.3 |
 | [ ] A0.5 | Agent | Create the `mkdocs.yml` skeleton, `docs/index.md`, and the `docs/gen_rtl_docs.py` generator (pyslang; strict failure on missing descriptions). | A0.3 |
 | [x] A0.6 | Agent | Fetch Digilent's official Basys3 master XDC and create a trimmed `syn/basys3.xdc` (clock, UART, reset, LEDs, switches). Confirm the pins against AGENTS.md §1. | — |

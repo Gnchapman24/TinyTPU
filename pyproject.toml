@@ -1,0 +1,29 @@
+[project]
+name = "tinytpu"
+version = "0.1.0"
+description = "Minimal INT8 TPU for the Digilent Basys3: host driver, reference model, tests and docs tooling"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy>=2.5.4",
+    "pyserial>=3.5",
+]
+
+# WSL gets every group by default (`uv sync`).
+# Windows (host driver only): `uv sync --no-default-groups`. See tools/setup.md.
+[dependency-groups]
+sim = [
+    "cocotb>=2.1.0",
+    "pytest>=9.2.0",
+]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocstrings[python]>=1.0.8",
+    "pyslang>=12.1.0",
+]
+
+[tool.uv]
+required-version = ">=0.13.8"
+default-groups = ["sim", "docs"]
+# No installable package yet. Switch to a package when host/ gets code.
+package = false

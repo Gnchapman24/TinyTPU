@@ -159,6 +159,10 @@ The development machine runs Windows with WSL2 (Ubuntu 26.04). Each tool runs on
   - In WSL, run `source tools/env.sh` first. It puts only the suite's `bin/` first on `PATH` and warns if the installed release differs from `tools/versions.env`. Makefile targets do the same.
   - Never source the suite's own `environment` script, and never add its `py3bin/`: that would put the suite's Python 3.11 first. The project uses Python 3.12 via `uv`.
 - **Formal reset assumption:** every `.sby` proof must assume reset on the first cycle (e.g. `always_comb if (!past_valid) assume (rst);`). Otherwise the solver starts from arbitrary register states and reports failures that can't happen in hardware.
+- **Guard properties by where they run:**
+  - Put `assert` and `cover` under `` `ifdef ASSERTIONS ``, which both the `.sby` files and the Verilator builds define.
+  - Put `assume` statements about the environment, including the reset assumption, under `` `ifdef FORMAL ``, which only the `.sby` files define.
+  - Reason: Verilator with `--assert` checks `assume` like `assert`. The reset assumption fails at time 0 in simulation, before the testbench drives `rst`. This was seen in the setup smoke test.
 - **Commands say which side they run on**, e.g. "WSL: `make sim`", "Windows: `vivado -mode batch -source syn/ooc.tcl`".
 
 ## 6. Coding guidelines
@@ -169,7 +173,11 @@ The development machine runs Windows with WSL2 (Ubuntu 26.04). Each tool runs on
 - Use synchronous, active-high internal reset `rst`. Synchronize the button input once at the top level.
 - Use `always_ff` / `always_comb`. No latches. No initial blocks in synthesizable RTL, except BRAM init files.
 - Write for synthesis and routing: pipeline long paths, avoid wide muxes across the array, and infer BRAM with the standard Vivado templates.
-- Python: 3.12 (see §5a). NumPy, cocotb, and pyserial are pinned in `uv.lock`.
+- Python: 3.12 (see §5a). All packages are pinned in `uv.lock`.
+  - Runtime dependencies (`numpy`, `pyserial`) go in `[project] dependencies`.
+  - Test tools go in the `sim` group; docs tools go in the `docs` group.
+  - Add packages with `uv add` (`--group sim|docs`); never use `pip install`.
+  - On Windows, use `uv sync --no-default-groups` with `UV_PROJECT_ENVIRONMENT` pointing outside the repo (see `tools/setup.md`).
 
 ## 7. Documentation
 
