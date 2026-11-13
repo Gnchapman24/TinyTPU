@@ -153,7 +153,12 @@ The development machine runs Windows with WSL2 (Ubuntu 26.04). Each tool runs on
 
 - **Repo location:** inside the WSL filesystem, so simulation and formal runs aren't slowed by cross-filesystem I/O. Windows tools reach it via `\\wsl.localhost\Ubuntu\home\<user>\...`.
 - **Vivado and UNC paths:** Vivado may misbehave with UNC paths. Map a drive letter to the WSL home if needed, and write Vivado run directories to a local Windows disk, never into the repo. TCL scripts take the output directory as an argument. Confirm this on the first Tier 3 run, then update this note.
-- **Use the OSS CAD Suite tools only:** WSL also has Ubuntu's own packaged Verilator (5.032 in `/usr/bin`). Don't use it. Source the OSS CAD Suite `environment` script so its tools come first on `PATH`, and check with `verilator --version` against `tools/versions.env`.
+- **Use the OSS CAD Suite tools only, with a project-only PATH:**
+  - The suite is installed at `~/tools/oss-cad-suite` and is **not** on the default shell `PATH`.
+  - WSL also has Ubuntu's own packaged Verilator (5.032 in `/usr/bin`). Don't use it.
+  - In WSL, run `source tools/env.sh` first. It puts only the suite's `bin/` first on `PATH` and warns if the installed release differs from `tools/versions.env`. Makefile targets do the same.
+  - Never source the suite's own `environment` script, and never add its `py3bin/`: that would put the suite's Python 3.11 first. The project uses Python 3.12 via `uv`.
+- **Formal reset assumption:** every `.sby` proof must assume reset on the first cycle (e.g. `always_comb if (!past_valid) assume (rst);`). Otherwise the solver starts from arbitrary register states and reports failures that can't happen in hardware.
 - **Commands say which side they run on**, e.g. "WSL: `make sim`", "Windows: `vivado -mode batch -source syn/ooc.tcl`".
 
 ## 6. Coding guidelines
