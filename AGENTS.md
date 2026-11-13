@@ -199,12 +199,18 @@ The development machine runs Windows with WSL2 (Ubuntu 26.04). Each tool runs on
 
 - **Decided: one MkDocs site. Module docs are generated from the source. No Natural Docs.**
 - **SystemVerilog:**
-  - Every module has a `/** ... */` header comment directly above `module`, containing a one-line summary, details, and latency in cycles.
-  - Every port and parameter has a short description: a trailing `// ...` comment on its declaration line.
-  - The script `docs/gen_rtl_docs.py` **(planned)** uses `pyslang` to read the actual parameters and ports, merges them with the header and trailing comments, and writes `docs/rtl/<module>.md` during the docs build.
-  - Don't hand-write port or parameter tables anywhere.
+  - Every module has a `/** ... */` header comment directly above `module`; only blank lines may separate them.
+    - Its first line is a one-line summary, followed by optional details.
+    - It must contain a line starting with `Latency:`, e.g. `Latency: 3 cycles from in_valid to out_valid`, or `Latency: combinational`.
+  - Use ANSI port lists and `#( ... )` parameter lists, with **one parameter or port per line**. Each line carries a trailing `// description` comment.
+  - `docs/gen_rtl_docs.py` reads the actual parameters and ports with `pyslang`, takes descriptions from those comments, and writes `docs/rtl/index.md` plus `docs/rtl/<module>.md`.
+    - It fails, listing every problem with file and line, if any rule above is broken or the RTL doesn't compile.
+    - Packages (`*_pkg.sv`) are compiled but don't get pages.
+  - Don't hand-write port or parameter tables anywhere. `docs/rtl/` is generated; don't edit it.
 - **Python:** Google-style docstrings, rendered by `mkdocstrings`.
-- **Build:** `mkdocs build --strict` runs in WSL and in CI. The doc generator fails the build if a module has no header, or a port or parameter has no description.
+- **Build:** `make docs` runs the generator, then `mkdocs build --strict`, in WSL and in CI. `make docs-serve` gives a live preview.
+  - `mkdocs.yml` has an explicit `nav`. Add each new hand-written page there.
+  - Python API pages use mkdocstrings `::: module.path` blocks.
 - `pyslang`, `mkdocs`, and `mkdocstrings` are pinned in `uv.lock`.
 - **Project-level:** MkDocs Markdown in `docs/` covering architecture, the memory map, the ISA, and the UART protocol. Update docs in the same change as the RTL they describe.
 
