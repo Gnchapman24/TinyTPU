@@ -113,6 +113,14 @@ Keep generated output out of git: `sim_build/`, `*.vcd`/`*.fst`, `results.xml`, 
 
 The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via `uv run --locked`. It refuses to run if the installed suite release doesn't match `tools/versions.env`.
 
+**CI:** `.github/workflows/ci.yml` runs on pushes to `main`, pull requests, and manual dispatch.
+- It runs the same `make` targets:
+  - `rtl` job: `lint`, `sim`, `formal`
+  - `docs` job: `docs`
+- It reads the OSS CAD Suite release and uv version from `tools/versions.env`, so changing a pin there changes CI too.
+- A manual run with `full = true` also runs `make sim-full` (N = 8). Use it before merging changes to the array, feeders, or accumulators.
+- Tier 3 (Vivado) never runs in CI.
+
 **File conventions (`make` discovers these automatically):**
 - `rtl/*_pkg.sv` are packages; they are compiled first.
 - `tb/test_*.py` are pytest files. Each one builds with `cocotb_tools.runner` and runs its own cocotb tests. It reads the array size from the `TINYTPU_N` environment variable, passes it as the `N` parameter, and uses the build directory `sim_build/<name>_N<n>`.

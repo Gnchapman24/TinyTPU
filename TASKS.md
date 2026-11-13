@@ -16,7 +16,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | ID | Owner | Task | Depends on |
 |---|---|---|---|
 | [x] H0.1 | Human | Install the latest OSS CAD Suite **dated release** in WSL at `~/tools/oss-cad-suite`. Installed release 20261112 and smoke-tested. It goes on PATH per project via `source tools/env.sh`, not in the shell profile. | — |
-| [~] H0.2 | Human | Install `uv` in WSL and on Windows. WSL has 0.13.8 (OK). Windows has 0.11.26, below the 0.13.8 minimum: run `uv self update`, then set up the host venv per `tools/setup.md`. | — |
+| [x] H0.2 | Human | Install `uv` in WSL and on Windows. Both are at 0.13.8. The Windows host venv was created at `%LOCALAPPDATA%\tinytpu\venv` (Python 3.12.10, numpy + pyserial only). The WSL `.venv` is unaffected. | — |
 | [ ] H0.3 | Human | Set the FTDI latency timer to 1 ms: Windows Device Manager → the Basys3 COM port → Port Settings → Advanced. | — |
 | [ ] H0.4 | Human | Check that Vivado 2025.2 Hardware Manager detects the Basys3. Install the cable drivers if it doesn't. | — |
 | [ ] H0.5 | Human | Delete the empty leftover folder `C:\Users\Grant\HOME\PROJECTS\TPU\TinyTPU` once no app has it open. | — |
@@ -28,7 +28,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | [x] A0.6 | Agent | Fetch Digilent's official Basys3 master XDC and create a trimmed `syn/basys3.xdc` (clock, UART, reset, LEDs, switches). Confirm the pins against AGENTS.md §1. | — |
 | [ ] J0.7 | Joint | Confirm how Vivado handles the repo's WSL path. Agent: run a trivial batch synthesis from the `\\wsl.localhost` path. Human: map a drive letter if it fails. Update AGENTS.md §5a. | A0.6 |
 | [x] J0.8 | Joint | First commit and push. Agent prepares the commit; human approves the push. | A0.1 |
-| [ ] A0.9 | Agent | Add a GitHub Actions workflow running Tier 1 (N = 2, 4), Tier 2, and `mkdocs build --strict`, with the OSS CAD Suite pinned to the date in `tools/versions.env`. | A0.2–A0.5, J0.8 |
+| [~] A0.9 | Agent | Add a GitHub Actions workflow running Tier 1 (N = 2, 4), Tier 2, and `mkdocs build --strict`, with the OSS CAD Suite pinned to the date in `tools/versions.env`. `.github/workflows/ci.yml` is written and its steps were dry-run locally from a fresh clone; the first real run on GitHub is still to be checked. | A0.2–A0.5, J0.8 |
 | [ ] H0.10 | Human | GitHub settings: enable Actions, branch protection on `main` requiring CI. | A0.9 |
 
 ## Phase 1 — ISA, protocol, memory map

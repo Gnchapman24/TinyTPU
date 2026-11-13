@@ -1,0 +1,100 @@
+# TinyTPU CI: tiers 1-2 and docs, matching the local WSL setup (AGENTS.md §5, §5a).
+# Tool versions come from tools/versions.env, so CI and local runs use the same OSS CAD Suite
+# release and uv version. Tier 3 (Vivado) runs locally on Windows, not here.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Also run the N = 8 simulation suite (make sim-full)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rtl:
+    name: Lint, simulation, formal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read pinned versions
+        id: pins
+        run: |
+          source tools/versions.env
+          r="$OSS_CAD_SUITE_RELEASE"
+          echo "oss_release=$r" >> "$GITHUB_OUTPUT"
+          echo "oss_tag=${r:0:4}-${r:4:2}-${r:6:2}" >> "$GITHUB_OUTPUT"
+          echo "uv=$UV_MIN_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Cache OSS CAD Suite archive
+        id: oss-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/oss-cad-suite-archive
+          key: oss-cad-suite-linux-x64-${{ steps.pins.outputs.oss_release }}
+
+      - name: Download OSS CAD Suite ${{ steps.pins.outputs.oss_tag }}
+        if: steps.oss-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/oss-cad-suite-archive
+          curl -fsSL --retry 3 -o ~/oss-cad-suite-archive/oss-cad-suite.tgz \
+            "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${{ steps.pins.outputs.oss_tag }}/oss-cad-suite-linux-x64-${{ steps.pins.outputs.oss_release }}.tgz"
+
+      - name: Install OSS CAD Suite to ~/tools (the Makefile default)
+        run: |
+          mkdir -p ~/tools
+          tar -xzf ~/oss-cad-suite-archive/oss-cad-suite.tgz -C ~/tools
+          cat ~/tools/oss-cad-suite/VERSION
+
+      - name: Install uv ${{ steps.pins.outputs.uv }}
+        run: |
+          curl -LsSf "https://astral.sh/uv/${{ steps.pins.outputs.uv }}/install.sh" | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Python environment
+        run: uv sync --locked
+
+      - name: Lint
+        run: make lint
+
+      - name: Simulation (N = 2, 4)
+        run: make sim
+
+      - name: Simulation (N = 8)
+        if: github.event_name == 'workflow_dispatch' && inputs.full
+        run: make sim-full
+
+      - name: Formal
+        run: make formal
+
+  docs:
+    name: Docs (strict build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        run: |
+          source tools/versions.env
+          curl -LsSf "https://astral.sh/uv/${UV_MIN_VERSION}/install.sh" | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Python environment
+        run: uv sync --locked
+
+      - name: Build docs
+        run: make docs
