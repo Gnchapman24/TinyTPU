@@ -27,7 +27,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | [ ] A0.5 | Agent | Create the `mkdocs.yml` skeleton, `docs/index.md`, and the `docs/gen_rtl_docs.py` generator (pyslang; strict failure on missing descriptions). | A0.3 |
 | [x] A0.6 | Agent | Fetch Digilent's official Basys3 master XDC and create a trimmed `syn/basys3.xdc` (clock, UART, reset, LEDs, switches). Confirm the pins against AGENTS.md §1. | — |
 | [ ] J0.7 | Joint | Confirm how Vivado handles the repo's WSL path. Agent: run a trivial batch synthesis from the `\\wsl.localhost` path. Human: map a drive letter if it fails. Update AGENTS.md §5a. | A0.6 |
-| [ ] J0.8 | Joint | First commit and push. Agent prepares the commit; human approves the push. | A0.1 |
+| [x] J0.8 | Joint | First commit and push. Agent prepares the commit; human approves the push. | A0.1 |
 | [ ] A0.9 | Agent | Add a GitHub Actions workflow running Tier 1 (N = 2, 4), Tier 2, and `mkdocs build --strict`, with the OSS CAD Suite pinned to the date in `tools/versions.env`. | A0.2–A0.5, J0.8 |
 | [ ] H0.10 | Human | GitHub settings: enable Actions, branch protection on `main` requiring CI. | A0.9 |
 
