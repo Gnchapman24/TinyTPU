@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -65,6 +65,20 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
     - **Weight loading is decided: a per-row load enable on a shared column bus, not a shift chain.** On load cycle *i* the array raises `w_load` for row *i*, and every PE in that row captures tile row *i* from its column's `w_in`. That is the WBUF row order, and it lets the stationary weight live in the DSP's BREG.
     - `use_dsp = "yes"` sits on `m_q`/`p_q`, because without it Vivado builds the 9x9 multiplier from about 136 LUTs. The attribute goes on signals, not on `module`, because the doc header must sit directly above `module`.
     - **Vivado OOC result:** 1 DSP48E1, 0 LUTs, 9 FFs, AREG = BREG = MREG = PREG = 1. The activation register is duplicated: one copy is the DSP's AREG, the other is the fabric copy for `a_out`.
+- **Systolic array (A3.3, `rtl/systolic_array.sv`):**
+  - **Interface:**
+    - `a_in` / `a_valid`: one activation vector per cycle, unskewed.
+    - `w_in` / `w_load` / `w_row`: one weight-tile row per cycle.
+    - `out_data` / `out_valid`: result vectors, de-skewed and truncated to 32 bits.
+  - **Latency:** exactly 2N+1 cycles.
+  - **Timing rules the controller must follow:**
+    - A tile's rows are loaded 0..N-1 on consecutive cycles, and its vectors may start in the same cycle as row 0.
+    - The next tile's row 0 must be loaded **at least N cycles** after the previous tile's last vector entered. `tb/test_systolic_array.py` shows N is the exact minimum: one cycle less corrupts a result.
+  - **Vivado OOC at N = 8:**
+    - 64 DSP48E1, 56 PCOUT→PCIN cascade links (all column partial sums on the dedicated cascade), BREG = MREG = PREG = 1.
+    - AREG is 1 or 2: Vivado pulls one skew register into some DSPs, which is fine.
+    - 11 LUTs and 871 FFs, the skew and de-skew delay lines.
+    - The 64 `Synth 8-3936` warnings (each PE's sum trimmed from 48 to 32 bits) are expected: only 32 bits reach the output, and the cascade itself stays 48 bits.
 - **Memory:** separate buffers for weights, activations, and accumulators, plus the parameter table and instruction memory. FIFOs sit between the buffers and the array edges.
   - **`sync_fifo` (A2.2):** parameterized `WIDTH` and power-of-two `DEPTH`, valid/ready on both sides, first-word fall-through, and a `count` output.
     - Its combinational read means it is for registers or LUT RAM, not BRAM.
@@ -285,6 +299,7 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
      - Synthesizes one module out of context and writes `<top>_ooc.json` with cell counts (LUT, FF, DSP, BRAM) and the DSP register settings (AREG, BREG, MREG, PREG).
      - Fails if the module's entry in the script's `expect` table does not match.
      - Every datapath module that must map to DSPs gets an entry. Cells are counted by `REF_NAME` (`LUT*`, `FD*`, `DSP48E1`, `RAMB*`).
+     - `CASCADE` counts DSPs whose PCIN is driven by another DSP's PCOUT. Nets that cross module boundaries must be followed with `get_nets -segments` and `get_pins -leaf`, or the count is wrongly 0.
    - **Resource budgets are decided (fixed ceilings + baseline check).** Measure at N = 8 with no debug cores (ILA) in the design.
      - **Hard ceilings:**
        - LUT ≤ 25% (5,200)

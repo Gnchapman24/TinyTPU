@@ -230,17 +230,26 @@ def extract(path: Path, root: Path, sm, tree, errors: list[str]) -> list[Module]
     return modules
 
 
+def _text(text: str) -> str:
+    """Escape square brackets outside `code` spans, so RTL text such as W[i][j] is not read as a
+    Markdown reference link."""
+    parts = text.split("`")
+    for i in range(0, len(parts), 2):  # even parts are outside code spans
+        parts[i] = parts[i].replace("[", "\\[").replace("]", "\\]")
+    return "`".join(parts)
+
+
 def _cell(text: str) -> str:
     """Escape text for a Markdown table cell."""
-    return text.replace("|", "\\|") if text else "—"
+    return _text(text).replace("|", "\\|") if text else "—"
 
 
 def render_module(mod: Module) -> str:
     """Render one module page as Markdown."""
-    out = [f"# `{mod.name}`", "", mod.summary, ""]
+    out = [f"# `{mod.name}`", "", _text(mod.summary), ""]
     if mod.details:
-        out += ["\n".join(mod.details).strip(), ""]
-    out += [f"**Latency:** {mod.latency}", "", f"Source: `{mod.path}` (line {mod.line})", ""]
+        out += [_text("\n".join(mod.details).strip()), ""]
+    out += [f"**Latency:** {_text(mod.latency)}", "", f"Source: `{mod.path}` (line {mod.line})", ""]
     out += ["## Parameters", ""]
     if mod.params:
         out += ["| Name | Type | Default | Description |", "|---|---|---|---|"]

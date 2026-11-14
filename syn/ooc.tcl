@@ -19,7 +19,8 @@ set root [file normalize [file join [file dirname [info script]] ..]]
 set part xc7a35tcpg236-1
 
 # Sources per module, in compile order.
-set sources(pe) {pe}
+set sources(pe)             {pe}
+set sources(systolic_array) {pe systolic_array}
 
 # Expectations per module: <metric> <value>. Metrics: LUT, FF (fabric flip-flops), DSP, BRAM,
 # and for each DSP48E1 the register settings AREG, BREG, MREG, PREG (all DSPs must match).
@@ -27,6 +28,11 @@ set sources(pe) {pe}
 #       (PREG) all inside it; no LUTs. The activation register is duplicated: one copy is the
 #       DSP's AREG, the other is the 9 fabric flip-flops that drive a_out to the next PE.
 set expect(pe) {DSP 1 LUT 0 FF 9 BRAM 0 AREG 1 BREG 1 MREG 1 PREG 1}
+#   systolic_array (N = 8): one DSP per PE (64); every column's partial sums use the dedicated
+#       PCOUT->PCIN cascade (7 links per column = 56); weight, product and sum registers inside
+#       every DSP. AREG is not checked: Vivado may pull one input-skew register into the DSP
+#       (AREG = 2), which is fine.
+set expect(systolic_array) {DSP 64 CASCADE 56 BRAM 0 BREG 1 MREG 1 PREG 1}
 
 if {![info exists sources($top)]} {
   error "unknown top '$top'; known: [array names sources]"
@@ -51,6 +57,17 @@ set metrics(DSP)  [count_cells "DSP48E1"]
 set metrics(BRAM) [count_cells "RAMB*"]
 
 set dsps [get_cells -hierarchical -quiet -filter {REF_NAME == DSP48E1}]
+
+# CASCADE: DSPs whose PCIN is driven by another DSP's PCOUT (the dedicated column cascade).
+set metrics(CASCADE) 0
+# The net crosses module boundaries, so follow all its segments down to leaf pins.
+foreach d $dsps {
+  set net [get_nets -quiet -segments -of_objects [get_pins -quiet "$d/PCIN\[0\]"]]
+  if {$net ne "" && [llength [get_pins -quiet -leaf -of_objects $net -filter {DIRECTION == OUT && REF_PIN_NAME =~ PCOUT*}]]} {
+    incr metrics(CASCADE)
+  }
+}
+
 foreach prop {AREG BREG MREG PREG} {
   if {[llength $dsps] == 0} {
     set metrics($prop) "none"
