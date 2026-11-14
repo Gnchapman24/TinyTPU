@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, and `crc16_ccitt` exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -175,10 +175,13 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
 
 ```
 rtl/          SystemVerilog sources (one module per file, file name = module name); rtl/isa_pkg.sv
-tb/           cocotb testbenches (test_*.py) + Python reference models; tb/hdl/ test-only HDL wrappers
-host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, crc.py, later compiler + driver
+tb/           cocotb testbenches (test_*.py) + Python reference models; tb/hdl/ test-only HDL wrappers;
+              tb/uart_bfm.py (UartSource/UartSink serial-line models for end-to-end tests)
+host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, crc.py, packet.py,
+              later compiler + driver
 formal/       SymbiYosys .sby files and property wrappers
-syn/          Vivado TCL (OOC synthesis, reports), XDC constraints, baseline.json
+syn/          Vivado: basys3.xdc, build.tcl (batch build of a top), program.tcl (JTAG),
+              vivado.ps1 (Windows wrapper), later OOC scripts and baseline.json
 docs/         MkDocs site (architecture, memory map, ISA, UART protocol) + gen_rtl_docs.py
 tools/        versions.env (pinned tool versions), setup notes
 pyproject.toml, uv.lock   Python 3.12 project and locked dependencies
@@ -210,6 +213,8 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
 - `rtl/*_pkg.sv` are packages; they are compiled first.
 - `tb/test_*.py` are pytest files. Each one builds with `cocotb_tools.runner` and runs its own cocotb tests. It reads the array size from the `TINYTPU_N` environment variable, passes it as the `N` parameter, and uses the build directory `sim_build/<name>_N<n>`.
 - `formal/<name>.sby` lists sources as `../rtl/...` in `[files]`.
+- **All cocotb tests in one file share one simulation.** DUT state carries over from test to test, so each test must start by resetting the DUT. Only a deliberate power-up test (placed first) may skip that.
+- **End-to-end tests** drive a top level only through its board pins, using `tb/uart_bfm.py` and the host's own `tinytpu.packet`, so they exercise the same path as the board.
 
 **Lint exceptions (no others without asking):**
 - **Formal `past_valid` idiom:** its declaration-with-initializer triggers Verilator `PROCASSINIT`. Wrap only that declaration in `/* verilator lint_off PROCASSINIT */ ... /* verilator lint_on PROCASSINIT */`.
@@ -282,7 +287,9 @@ The development machine runs Windows with WSL2 (Ubuntu 26.04). Each tool runs on
 | **Both** | Python | **3.12**, installed per project with `uv` (`uv python install 3.12`). Packages are locked in `uv.lock`. Don't use the system Pythons (3.14 in WSL, 3.15 on Windows). |
 
 - **Repo location:** inside the WSL filesystem, so simulation and formal runs aren't slowed by cross-filesystem I/O. Windows tools reach it via `\\wsl.localhost\Ubuntu\home\<user>\...`.
-- **Vivado and UNC paths:** Vivado may misbehave with UNC paths. Map a drive letter to the WSL home if needed, and write Vivado run directories to a local Windows disk, never into the repo. TCL scripts take the output directory as an argument. Confirm this on the first Tier 3 run, then update this note.
+- **Vivado and UNC paths (confirmed in J0.7):** Vivado 2025.2 reads sources and constraints directly from `\\wsl.localhost\...`; no drive letter is needed.
+  - Run directories go to a local Windows disk, never into the repo: `syn/vivado.ps1` uses `%LOCALAPPDATA%\tinytpu\vivado\<top>` and runs Vivado from there, so `.Xil/` and logs land there too.
+  - `syn/build.tcl` takes the top and the output directory as arguments, and fails if setup or hold timing is not met.
 - **Use the OSS CAD Suite tools only, with a project-only PATH:**
   - The suite is installed at `~/tools/oss-cad-suite` and is **not** on the default shell `PATH`.
   - WSL also has Ubuntu's own packaged Verilator (5.032 in `/usr/bin`). Don't use it.
@@ -301,6 +308,13 @@ The development machine runs Windows with WSL2 (Ubuntu 26.04). Each tool runs on
 - Parameterize array size and data and accumulator widths. Derive dependent widths with `$clog2`, not magic numbers.
 - Keep datapath and control in separate modules.
 - Use synchronous, active-high internal reset `rst`. Synchronize the button input once at the top level.
+  - `rtl/reset_gen.sv` does this, and also gives a power-on reset with no initial values: it relies on 7-series flip-flops starting at 0 after configuration. Every top level uses it.
+- **Unused inputs or outputs:** name the sink signal with `unused_` (e.g. `assign unused_sw = ^sw[15:2];`). Verilator's default `--unused-regexp` then skips it. This is a naming convention, not a lint exception. Vivado still reports unused top-level ports as warnings; that is expected.
+- **Bring-up design:**
+  - `rtl/loopback_echo.sv` and `rtl/loopback_top.sv` (A2.4) are for board bring-up only.
+  - They use the real packet format plus a bring-up-only `ECHO` command (0x7E), with a 256-byte payload limit.
+  - User guide: `docs/bringup.md`. The real command engine (A4.1) replaces `loopback_echo`.
+  - Bring-up modules are tested end to end in cocotb but have no formal proofs.
 - Use `always_ff` / `always_comb`. No latches. No initial blocks in synthesizable RTL, except BRAM init files.
 - Write for synthesis and routing: pipeline long paths, avoid wide muxes across the array, and infer BRAM with the standard Vivado templates.
 - Python: 3.12 (see §5a). All packages are pinned in `uv.lock`.

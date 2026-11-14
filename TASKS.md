@@ -26,7 +26,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | [x] A0.4 | Agent | Create a top-level `Makefile` with targets `sim`, `sim-full` (N = 8), `formal`, `docs`, `lint` (`verilator --lint-only`). Each target names the side it runs on. | A0.3 |
 | [x] A0.5 | Agent | Create the `mkdocs.yml` skeleton, `docs/index.md`, and the `docs/gen_rtl_docs.py` generator (pyslang; strict failure on missing descriptions). | A0.3 |
 | [x] A0.6 | Agent | Fetch Digilent's official Basys3 master XDC and create a trimmed `syn/basys3.xdc` (clock, UART, reset, LEDs, switches). Confirm the pins against AGENTS.md §1. | — |
-| [ ] J0.7 | Joint | Confirm how Vivado handles the repo's WSL path. Agent: run a trivial batch synthesis from the `\\wsl.localhost` path. Human: map a drive letter if it fails. Update AGENTS.md §5a. | A0.6 |
+| [x] J0.7 | Joint | Confirm how Vivado handles the repo's WSL path. Agent: run a trivial batch synthesis from the `\\wsl.localhost` path. Human: map a drive letter if it fails. Update AGENTS.md §5a. | A0.6 |
 | [x] J0.8 | Joint | First commit and push. Agent prepares the commit; human approves the push. | A0.1 |
 | [x] A0.9 | Agent | Add a GitHub Actions workflow running Tier 1 (N = 2, 4), Tier 2, and `mkdocs build --strict`, with the OSS CAD Suite pinned to the date in `tools/versions.env`. First run (commit 52b40d3) passed: both jobs green. | A0.2–A0.5, J0.8 |
 | [ ] H0.10 | Human | GitHub settings: enable Actions, branch protection on `main` requiring CI. | A0.9 |
@@ -48,7 +48,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | [x] A2.1 | Agent | `uart_rx`, `uart_tx` (`CLKS_PER_BIT` parameter, mid-bit sampling, framing-error flag) + cocotb tests + formal properties. | A0.4 |
 | [x] A2.2 | Agent | `sync_fifo` + cocotb tests + formal properties (no overflow or underflow, count invariants). | A0.4 |
 | [x] A2.3 | Agent | `crc16_ccitt` (CCITT-FALSE) + cocotb test against the Python reference, including check value 0x29B1. | A0.4 |
-| [ ] A2.4 | Agent | Loopback top-level for bring-up (echo with CRC check, LED status) + Vivado build script. | A2.1–A2.3, A0.6 |
+| [x] A2.4 | Agent | Loopback top-level for bring-up (echo with CRC check, LED status) + Vivado build script. | A2.1–A2.3, A0.6 |
 | [ ] A2.5 | Agent | Host driver basics: open port at 1 Mbaud, CRC framing, ACK/NAK and resend, timeout. | A2.3, J1.3 |
 | [ ] H2.6 | Human | Board bring-up: program the loopback bitstream, run the host loopback test at 1 Mbaud, and report results or errors. | A2.4, A2.5, H0.3, H0.4 |
 

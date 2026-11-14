@@ -16,10 +16,12 @@ nav:
   - ISA: isa.md
   - UART protocol: uart_protocol.md
   - Memory map: memory_map.md
+  - Board bring-up: bringup.md
   - RTL modules: rtl/index.md
   - Python API:
       - tinytpu.isa: api/isa.md
       - tinytpu.crc: api/crc.md
+      - tinytpu.packet: api/packet.md
 
 # Python API pages use `::: module.path` blocks (Google-style docstrings).
 plugins:
