@@ -39,7 +39,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | [x] J1.2 | Joint | Decide on-chip write-back of requantized results to the activation buffer (the last OPEN item in AGENTS.md). | J1.1 |
 | [x] J1.3 | Joint | Packet format. Agent drafts header, length field, opcode/payload layout, ACK/NAK codes, and the timeout rule. Human decides. Result: `docs/uart_protocol.md`. | J1.1 |
 | [x] J1.4 | Joint | Memory map: buffer depths for weights, activations, and accumulators, checked against the BRAM ceiling (≤ 25 BRAM36). Result: `docs/memory_map.md`. | J1.1 |
-| [ ] A1.5 | Agent | Write `rtl/isa_pkg.sv` (opcode enums, instruction structs) and a matching Python module in `host/`, both generated from or checked against `docs/isa.md`. | J1.1–J1.4 |
+| [x] A1.5 | Agent | Write `rtl/isa_pkg.sv` (opcode enums, instruction structs) and a matching Python module in `host/`, both generated from or checked against `docs/isa.md`. | J1.1–J1.4 |
 
 ## Phase 2 — Serial link (UART, CRC, packets)
 

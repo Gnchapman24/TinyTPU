@@ -162,8 +162,9 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
 ## 4. Repository layout (planned)
 
 ```
-rtl/          SystemVerilog sources (one module per file, file name = module name)
-tb/           cocotb testbenches + Python reference models
+rtl/          SystemVerilog sources (one module per file, file name = module name); rtl/isa_pkg.sv
+tb/           cocotb testbenches (test_*.py) + Python reference models; tb/hdl/ test-only HDL wrappers
+host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, later compiler + driver
 formal/       SymbiYosys .sby files and property wrappers
 syn/          Vivado TCL (OOC synthesis, reports), XDC constraints, baseline.json
 host/         Python host driver (pyserial)
@@ -178,7 +179,7 @@ Keep generated output out of git: `sim_build/`, `*.vcd`/`*.fst`, `results.xml`, 
 ## 5. Verification (three tiers, planned)
 
 **Entry points:** the top-level `Makefile`, run in WSL. Run `make help` for the list.
-- `make lint`: every `rtl/` module through Verilator `-Wall` and yosys-slang, with `ASSERTIONS` defined. Must pass with zero warnings.
+- `make lint`: the `rtl/` packages on their own, then every `rtl/` module, through Verilator `-Wall` and yosys-slang with `ASSERTIONS` defined. Must pass with zero warnings.
 - `make sim`: tier 1 at N = 2 and 4. Add `K=<pytest filter>` to select tests.
 - `make sim-full`: tier 1 at N = 8.
 - `make formal`: tier 2.
@@ -199,7 +200,14 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
 - `tb/test_*.py` are pytest files. Each one builds with `cocotb_tools.runner` and runs its own cocotb tests. It reads the array size from the `TINYTPU_N` environment variable, passes it as the `N` parameter, and uses the build directory `sim_build/<name>_N<n>`.
 - `formal/<name>.sby` lists sources as `../rtl/...` in `[files]`.
 
-**Lint exception for the formal `past_valid` idiom:** its declaration-with-initializer triggers Verilator `PROCASSINIT`. Wrap only that declaration in `/* verilator lint_off PROCASSINIT */ ... /* verilator lint_on PROCASSINIT */`. No other lint suppressions without asking.
+**Lint exceptions (no others without asking):**
+- **Formal `past_valid` idiom:** its declaration-with-initializer triggers Verilator `PROCASSINIT`. Wrap only that declaration in `/* verilator lint_off PROCASSINIT */ ... /* verilator lint_on PROCASSINIT */`.
+- **Packages:** wrap a package's body in `/* verilator lint_off UNUSEDPARAM */ ... lint_on`. Package constants exist for importers, and any one module uses only some of them.
+
+**ISA consistency:**
+- `rtl/isa_pkg.sv` and `host/tinytpu/isa.py` both mirror `docs/isa.md`.
+- `tb/test_isa.py` checks, with pyslang and Verilator, that every constant, enum, struct layout, and the doc's example program agree. A change to one of the three must update all of them in the same commit.
+- `tinytpu.isa.decode_error()` is the reference model for the hardware decoder's legality checks (ISA errors 1–4).
 
 1. **Functional: cocotb + Verilator**
    - Reference results come from NumPy using the same integer semantics as the RTL (same signedness, accumulator width, and requantization).
@@ -271,6 +279,7 @@ The development machine runs Windows with WSL2 (Ubuntu 26.04). Each tool runs on
 - Use `always_ff` / `always_comb`. No latches. No initial blocks in synthesizable RTL, except BRAM init files.
 - Write for synthesis and routing: pipeline long paths, avoid wide muxes across the array, and infer BRAM with the standard Vivado templates.
 - Python: 3.12 (see §5a). All packages are pinned in `uv.lock`.
+  - Host code is the `tinytpu` package in `host/tinytpu/`. It is built with `uv_build` and installed editable by `uv sync`, so `import tinytpu` works in tests, docs, and on Windows.
   - Runtime dependencies (`numpy`, `pyserial`) go in `[project] dependencies`.
   - Test tools go in the `sim` group; docs tools go in the `docs` group.
   - Add packages with `uv add` (`--group sim|docs`); never use `pip install`.

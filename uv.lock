@@ -393,7 +393,7 @@ wheels = [
 [[package]]
 name = "tinytpu"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 default-groups = ["docs", "sim"]
 dependencies = [
     { name = "numpy" },

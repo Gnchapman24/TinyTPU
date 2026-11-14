@@ -17,6 +17,8 @@ nav:
   - UART protocol: uart_protocol.md
   - Memory map: memory_map.md
   - RTL modules: rtl/index.md
+  - Python API:
+      - tinytpu.isa: api/isa.md
 
 # Python API pages use `::: module.path` blocks (Google-style docstrings).
 plugins:
@@ -25,7 +27,7 @@ plugins:
       default_handler: python
       handlers:
         python:
-          paths: [.]
+          paths: [host]
           options:
             docstring_style: google
             show_source: false

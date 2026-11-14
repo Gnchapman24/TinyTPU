@@ -68,7 +68,13 @@ check-uv:
 # --- tier 0: lint -----------------------------------------------------------------------------
 
 lint: check-oss
-	@if [ -z "$(MOD_SRCS)" ]; then echo "lint: no modules in rtl/ yet"; exit 0; fi; \
+	@if [ -z "$(RTL_SRCS)" ]; then echo "lint: no RTL in rtl/ yet"; exit 0; fi; \
+	if [ -n "$(PKG_SRCS)" ]; then \
+	  echo "lint: packages (verilator)"; \
+	  verilator --lint-only -Wall -DASSERTIONS $(PKG_SRCS); \
+	  echo "lint: packages (yosys-slang)"; \
+	  yosys -q -m slang -p "read_slang -DASSERTIONS -Wno-missing-top $(PKG_SRCS)"; \
+	fi; \
 	for f in $(MOD_SRCS); do \
 	  top="$$(basename "$$f" .sv)"; \
 	  echo "lint: $$top (verilator)"; \
@@ -126,5 +132,5 @@ all: lint sim formal docs
 clean:
 	rm -rf sim_build site docs/rtl results.xml
 	find tb -name sim_build -type d -prune -exec rm -rf {} + 2>/dev/null || true
-	find tb -name results.xml -delete 2>/dev/null || true
+	find tb \( -name results.xml -o -name '*.result.xml' \) -delete 2>/dev/null || true
 	find formal -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} + 2>/dev/null || true

@@ -25,5 +25,12 @@ docs = [
 [tool.uv]
 required-version = ">=0.13.8"
 default-groups = ["sim", "docs"]
-# No installable package yet. Switch to a package when host/ gets code.
-package = false
+
+# The `tinytpu` package lives in host/tinytpu and is installed (editable) by `uv sync`.
+[tool.uv.build-backend]
+module-root = "host"
+module-name = "tinytpu"
+
+[build-system]
+requires = ["uv_build>=0.13.8,<0.14"]
+build-backend = "uv_build"
