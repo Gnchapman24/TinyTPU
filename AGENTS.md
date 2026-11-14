@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -41,6 +41,12 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
   - **No zero-points:** quantization is symmetric throughout.
   - **No TFLite compatibility:** the design does not reproduce TFLite's Q31 rounding behaviour. The NumPy reference model implements exactly the formula above.
   - **Tests:** cover negative values, rounding ties, both clamp edges, and s = 0.
+  - **Implemented (A3.5, `rtl/requant.sv`):**
+    - One value per cycle (`in_valid`, `in_acc`, `in_mult`, `in_shift`, `in_relu`), no stalls; 6-cycle latency. `out_data` is the low byte of `y`, as written into ABUF.
+    - A `TAG_W`-bit `in_tag` travels with each value to `out_tag`, so the controller can tell which column and row a result belongs to.
+    - Rounding is folded into the shift: `(P + R) >>> s == ((2P >>> s) + 1) >>> 1` for every s (including 0 and s ≥ 48), so no variable R is built.
+    - **Raw mode needs no hardware here:** the host reads ACC through `acc_unit`'s read port.
+    - **Vivado OOC:** 2 DSP48E1 joined by 1 PCOUT→PCIN cascade, MREG = PREG = 1, 284 LUTs, 110 FFs, about +3.9 ns post-synthesis slack at 100 MHz.
 - No floating point anywhere in the RTL.
 
 ## 3. Architecture

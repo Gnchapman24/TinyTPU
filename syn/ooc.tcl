@@ -22,6 +22,7 @@ set part xc7a35tcpg236-1
 set sources(pe)             {pe}
 set sources(systolic_array) {pe systolic_array}
 set sources(acc_unit)       {isa_pkg acc_unit}
+set sources(requant)        {requant}
 
 # Expectations per module: <metric> <value>. Metrics: LUT, FF (fabric flip-flops), DSP, BRAM,
 # and for each DSP48E1 the register settings AREG, BREG, MREG, PREG (all DSPs must match).
@@ -37,6 +38,10 @@ set expect(systolic_array) {DSP 64 CASCADE 56 BRAM 0 BREG 1 MREG 1 PREG 1}
 #   acc_unit (N = 8, DEPTH = 512): the 512 x 256-bit buffer in 4 BRAM tiles (memory map); the
 #       adders in fabric, never in DSPs (the DSP budget is exactly 66).
 set expect(acc_unit) {DSP 0 BRAM 4}
+#   requant: the 32 x 17-bit product (acc x M) in exactly 2 DSPs joined by the cascade, with
+#       product and sum registers inside both; rounding shift and clamp in fabric. AREG/BREG are
+#       not checked: the second DSP uses 2 input registers to line up with the first.
+set expect(requant) {DSP 2 CASCADE 1 BRAM 0 MREG 1 PREG 1}
 
 if {![info exists sources($top)]} {
   error "unknown top '$top'; known: [array names sources]"
