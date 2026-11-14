@@ -15,6 +15,7 @@ nav:
   - Home: index.md
   - ISA: isa.md
   - UART protocol: uart_protocol.md
+  - Memory map: memory_map.md
   - RTL modules: rtl/index.md
 
 # Python API pages use `::: module.path` blocks (Google-style docstrings).

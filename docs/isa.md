@@ -5,7 +5,7 @@ This page is the single source of truth for the TinyTPU ISA. The RTL (`rtl/isa_p
 Two related pages fill in the rest:
 
 - [UART protocol](uart_protocol.md): byte layout of host commands
-- **Memory map** (`docs/memory_map.md`, planned in task J1.4): buffer depths, and therefore how many bits of each address field are implemented
+- [Memory map](memory_map.md): buffer depths, byte layouts, and how many bits of each address field are implemented
 
 ## Execution model
 
@@ -40,7 +40,7 @@ All addresses are in each memory's natural unit, never in bytes. N is the array 
 | Accumulator buffer | `ACC` | one row of N INT32 accumulators | 32 B |
 | Parameter table | `PTAB` | one output channel: `{bias: INT32, M: u16, s: u6}` | 54 bits |
 
-The depth of each memory, and the numeric memory IDs used on the wire, are set in the memory map and the UART protocol.
+The depth of each memory is set in the [memory map](memory_map.md). The numeric memory IDs used on the wire are set in the [UART protocol](uart_protocol.md#memories-and-units).
 
 ## Data layout (canonical)
 
@@ -57,7 +57,7 @@ A layer computes `Y[M × Nout] = X[M × K] · W[K × Nout]`, in tiles of N. **KT
   - Padded output channels accumulate to 0 and requantize to 0, so the padding stays zero into the next layer.
 - **Chaining:** `REQUANT` writes accumulator row `(m, n)` as one activation vector at `a_dst + m·NT + n`. That is exactly the canonical activation layout for a following layer whose KT equals this layer's NT. Layers chain without any data reshuffling.
 
-Within a weight tile, row `i` holds the weights that multiply activation element `i`, for the tile's N output columns. The exact byte order inside a tile, vector and row is fixed by the memory map.
+Within a weight tile, row `i` holds the weights that multiply activation element `i`, for the tile's N output columns. The byte order inside a tile, vector, row and parameter entry is defined in the [memory map](memory_map.md#byte-layout-of-each-unit).
 
 ## Instruction format
 

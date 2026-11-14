@@ -43,12 +43,12 @@ This page defines the bytes exchanged between the host and TinyTPU over the Basy
 | ID | Memory | Bytes per unit on the wire (N = 8) | Unit contents |
 |---|---|---|---|
 | 0 | `IMEM` | 16 | one instruction, least-significant byte first |
-| 1 | `WBUF` | N² = 64 | one weight tile. Byte order within the tile is set by the memory map. |
+| 1 | `WBUF` | N² = 64 | one weight tile: N rows in order, each row byte 0 first (see the [memory map](memory_map.md#weight-tile-wbuf)) |
 | 2 | `ABUF` | N = 8 | one activation vector, element 0 first |
 | 3 | `ACC` | 4N = 32 | N × INT32, column 0 first, each little-endian |
 | 4 | `PTAB` | 8 | `bias` i32, `M` u16, `s` u8 (bits 7:6 must be 0), 1 pad byte (must be 0) |
 
-Addresses and counts are in units, never bytes. Each memory's depth is reported by `INFO`.
+Addresses and counts are in units, never bytes. Each memory's depth is reported by `INFO`; the defaults are in the [memory map](memory_map.md#summary).
 
 ## Commands
 

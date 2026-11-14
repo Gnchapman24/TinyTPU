@@ -59,7 +59,26 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
   - Never mix signed and unsigned operands in one SystemVerilog expression.
   - Register inputs, product, and output so Vivado can absorb them into AREG/BREG/MREG/PREG.
   - `(* use_dsp = "yes" *)` is allowed when inference falls back to LUTs.
-- **Memory:** separate BRAM buffers for weights, activations, and accumulators/results. FIFOs sit between the buffers and the array edges.
+- **Memory:** separate buffers for weights, activations, and accumulators, plus the parameter table and instruction memory. FIFOs sit between the buffers and the array edges.
+  - **Memory map is decided (J1.4); full spec in `docs/memory_map.md`.** Defaults at N = 8:
+
+    | Memory | Depth | Width | Built from | BRAM36 |
+    |---|---|---|---|---|
+    | `IMEM` | 128 instructions | 128 b | LUT RAM | 0 |
+    | `PTAB` | 512 channels | 54 b | BRAM | 1 |
+    | `ACC` | 512 rows | 256 b | BRAM | 4 |
+    | `ABUF` | 1024 vectors | 64 b | BRAM | 2 |
+    | `WBUF` | 2048 tiles (16384 rows) | 64 b | BRAM | 32 |
+
+    Total: 39 BRAM36 (78%).
+  - All depths are parameters, and powers of two. Address-field widths are `$clog2(depth)`; counts are 12 bits.
+  - WBUF and ABUF are N bytes wide: a weight tile loads in N cycles, one row per cycle.
+  - **Byte order:**
+    - Weight tile row *i* (multiplies activation element *i*) is physical WBUF row `tile*N + i`; byte *j* is output column *j*. So `W[k*N:(k+1)*N, n*N:(n+1)*N].tobytes()` is a tile.
+    - Vector byte *j* = element *j*.
+    - ACC word *j* = column *j*.
+  - Each memory has a datapath port plus host access through a 2:1 mux. The host has access only while halted, so no arbitration is needed.
+  - **Model limits:** weights ≤ 128 KB, total channels ≤ 512, ABUF ≤ 8 KB, per layer M·NT ≤ 512.
 - **Host interface:** UART.
   - Baud rate is **decided: 1,000,000 baud**.
     - Set by the build-time parameter `CLKS_PER_BIT` (= 100 at 100 MHz). The rate is exact on both the FPGA and FTDI sides.
@@ -208,7 +227,7 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
      - **Hard ceilings:**
        - LUT ≤ 25% (5,200)
        - FF ≤ 15% (6,240)
-       - BRAM36 ≤ 50% (25)
+       - BRAM36 ≤ 80% (40). Expected exactly 39 (J1.4 memory map). It was raised from 50% so weights can stay on-chip; the remaining ~10 blocks are for ILA debug cores.
        - DSP **exactly 66**: 65 means a MAC fell into LUTs; 67 or more means an unexpected DSP was inferred
        - worst setup slack ≥ 0 at 100 MHz
      - **Regression check** against the committed `syn/baseline.json`:
