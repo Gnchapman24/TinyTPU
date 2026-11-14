@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, and the UART (`uart_rx`, `uart_tx`) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), and `sync_fifo` exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -60,6 +60,10 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
   - Register inputs, product, and output so Vivado can absorb them into AREG/BREG/MREG/PREG.
   - `(* use_dsp = "yes" *)` is allowed when inference falls back to LUTs.
 - **Memory:** separate buffers for weights, activations, and accumulators, plus the parameter table and instruction memory. FIFOs sit between the buffers and the array edges.
+  - **`sync_fifo` (A2.2):** parameterized `WIDTH` and power-of-two `DEPTH`, valid/ready on both sides, first-word fall-through, and a `count` output.
+    - Its combinational read means it is for registers or LUT RAM, not BRAM.
+    - `in_ready` depends only on full, even during a same-cycle read.
+    - Reuse it for every small FIFO (e.g. the UART receive FIFO).
   - **Memory map is decided (J1.4); full spec in `docs/memory_map.md`.** Defaults at N = 8:
 
     | Memory | Depth | Width | Built from | BRAM36 |
@@ -229,7 +233,12 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
      - the receiver never drops a byte while its FIFO has space
    - **UART proof (done, `formal/uart.sby` + `formal/uart_loopback.sv`):** `uart_tx` drives `uart_rx` over a line where the solver can force any stop bit low and hold a break for 0–3 extra bits.
      - Proved: good frames arrive as exactly the byte sent; corrupted frames give `frame_err` and never a byte; every frame gives its pulse within a fixed bound; no pulse without a frame in flight; plus each module's own assertions.
-     - The FIFO half of "never drops a byte" is proved with `sync_fifo` (A2.2) and the packet engine (A4.1).
+     - The FIFO half of "never drops a byte" is proved with `sync_fifo` (A2.2, below) and the packet engine (A4.1).
+   - **FIFO proof (done, `formal/sync_fifo.sby` + `formal/sync_fifo_formal.sv`):** proved at depths 2, 4, and 8.
+     - Uses the **tracked-element** method: the solver marks any one accepted write, and the harness proves that the read removing it returns exactly that value at exactly its queue position. So no entry is ever lost, corrupted, duplicated, or reordered.
+     - The module's own assertions add the occupancy model, full/empty, and `ready`/`valid`.
+     - Use the same tracked-element pattern for any future queue or buffer.
+     - For PDR, designs with memory arrays need `memory_map` after `prep` in the `.sby` script.
    - **Harnesses and engines:**
      - Multi-module properties live in harness modules in `formal/`, which the `.sby` file names as top. Harnesses are formal-only, so their `assume`s need no `ifdef`.
      - Prove with `abc pdr`: it proves for all time without hand-written induction invariants. Cover with `smtbmc`.

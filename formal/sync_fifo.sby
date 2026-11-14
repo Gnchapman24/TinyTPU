@@ -1,0 +1,35 @@
+# sync_fifo formal proof (task A2.2): occupancy invariants plus data integrity and ordering
+# (tracked-element method, see sync_fifo_formal.sv), at depths 2, 4 and 8 with 4-bit entries.
+
+[tasks]
+prove_d2
+prove_d4
+prove_d8
+cover
+
+[options]
+prove_d2: mode prove
+prove_d4: mode prove
+prove_d8: mode prove
+cover: mode cover
+cover: depth 24
+
+[engines]
+prove_d2: abc pdr
+prove_d4: abc pdr
+prove_d8: abc pdr
+cover: smtbmc
+
+[script]
+plugin -i slang
+prove_d2: read_slang -DFORMAL -DASSERTIONS -G DEPTH=2 sync_fifo.sv sync_fifo_formal.sv --top sync_fifo_formal
+prove_d4: read_slang -DFORMAL -DASSERTIONS -G DEPTH=4 sync_fifo.sv sync_fifo_formal.sv --top sync_fifo_formal
+prove_d8: read_slang -DFORMAL -DASSERTIONS -G DEPTH=8 sync_fifo.sv sync_fifo_formal.sv --top sync_fifo_formal
+cover: read_slang -DFORMAL -DASSERTIONS -G DEPTH=4 sync_fifo.sv sync_fifo_formal.sv --top sync_fifo_formal
+prep -top sync_fifo_formal
+memory_map
+opt -fast
+
+[files]
+../rtl/sync_fifo.sv
+sync_fifo_formal.sv

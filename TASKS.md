@@ -46,7 +46,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | ID | Owner | Task | Depends on |
 |---|---|---|---|
 | [x] A2.1 | Agent | `uart_rx`, `uart_tx` (`CLKS_PER_BIT` parameter, mid-bit sampling, framing-error flag) + cocotb tests + formal properties. | A0.4 |
-| [ ] A2.2 | Agent | `sync_fifo` + cocotb tests + formal properties (no overflow or underflow, count invariants). | A0.4 |
+| [x] A2.2 | Agent | `sync_fifo` + cocotb tests + formal properties (no overflow or underflow, count invariants). | A0.4 |
 | [ ] A2.3 | Agent | `crc16_ccitt` (CCITT-FALSE) + cocotb test against the Python reference, including check value 0x29B1. | A0.4 |
 | [ ] A2.4 | Agent | Loopback top-level for bring-up (echo with CRC check, LED status) + Vivado build script. | A2.1–A2.3, A0.6 |
 | [ ] A2.5 | Agent | Host driver basics: open port at 1 Mbaud, CRC framing, ACK/NAK and resend, timeout. | A2.3, J1.3 |
