@@ -61,7 +61,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | [x] A3.3 | Agent | `systolic_array` (N parameter, edge sign extension, input skew, output de-skew, PCOUT→PCIN cascade) + tests at N = 2, 4, 8. | A3.1, A3.2 |
 | [x] A3.4 | Agent | Column accumulators + accumulator buffer + bias preload (if in the ISA) + tests. | A3.3, J1.4 |
 | [x] A3.5 | Agent | Requantizer (shared, pipelined, per-column M/s, ReLU clamp, raw bypass) + edge-case tests. Raw bypass is the ACC read port; no requantizer hardware needed. | A3.1, J1.1 |
-| [ ] A3.6 | Agent | Weight and activation buffers + feeders/FIFOs + tests. | J1.4 |
+| [x] A3.6 | Agent | Weight and activation buffers + feeders/FIFOs + tests. Decided: no FIFOs, fixed-latency tagged read paths (`buffer_ram`, also used for PTAB); sequencing is in A4.2. | J1.4 |
 
 ## Phase 4 — Control
 

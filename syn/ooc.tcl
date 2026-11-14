@@ -7,8 +7,13 @@
 #
 # Synthesizes <top> out of context (no I/O buffers) for the Basys3 part with a 100 MHz clock on
 # `clk`, then:
-#   * writes <top>_ooc_utilization.rpt and <top>_ooc.json (cell counts and DSP register settings),
+#   * writes <top>_ooc_utilization.rpt and <top>_ooc.json (cell counts, DSP register settings,
+#     and the worst setup slack WNS in ns, a post-synthesis estimate; ports get zero input and
+#     output delay, i.e. they are timed as if driven by / driving a register next to the module),
 #   * checks the expectations listed below for <top>, and fails (non-zero exit) on any mismatch.
+#
+# <top> is a module name, or a named configuration of a module (e.g. wbuf = buffer_ram with the
+# WBUF parameters), listed in `module` and `generics` below.
 
 if {[llength $argv] != 2} {
   error "usage: -tclargs <top> <out_dir>"
@@ -23,6 +28,17 @@ set sources(pe)             {pe}
 set sources(systolic_array) {pe systolic_array}
 set sources(acc_unit)       {isa_pkg acc_unit}
 set sources(requant)        {requant}
+set sources(wbuf)           {buffer_ram}
+set sources(abuf)           {buffer_ram}
+set sources(ptab)           {buffer_ram}
+
+# Named configurations: the module to synthesize and its parameters (N = 8, memory map defaults).
+set module(wbuf)   buffer_ram
+set generics(wbuf) {WIDTH=64 DEPTH=16384 LANES=1 RD_PIPE=2 TAG_W=4}
+set module(abuf)   buffer_ram
+set generics(abuf) {WIDTH=64 DEPTH=1024 LANES=8 RD_PIPE=1 TAG_W=1}
+set module(ptab)   buffer_ram
+set generics(ptab) {WIDTH=54 DEPTH=512 LANES=1 RD_PIPE=1 TAG_W=4}
 
 # Expectations per module: <metric> <value>. Metrics: LUT, FF (fabric flip-flops), DSP, BRAM,
 # and for each DSP48E1 the register settings AREG, BREG, MREG, PREG (all DSPs must match).
@@ -42,6 +58,13 @@ set expect(acc_unit) {DSP 0 BRAM 4}
 #       product and sum registers inside both; rounding shift and clamp in fabric. AREG/BREG are
 #       not checked: the second DSP uses 2 input registers to line up with the first.
 set expect(requant) {DSP 2 CASCADE 1 BRAM 0 MREG 1 PREG 1}
+#   wbuf / abuf / ptab (buffer_ram, memory map at N = 8): exactly the memory map's BRAM tiles,
+#       no DSPs, setup met. WBUF's 32 RAMB36 need a read-data mux: RD_PIPE = 2 uses the BRAM
+#       output register plus one fabric register after the mux (the path to watch once placed).
+#       ABUF's byte-lane writes must use the BRAM's own write enables (still 2 tiles).
+set expect(wbuf) {DSP 0 BRAM 32 SLACK_MET 1}
+set expect(abuf) {DSP 0 BRAM 2 SLACK_MET 1}
+set expect(ptab) {DSP 0 BRAM 1 SLACK_MET 1}
 
 if {![info exists sources($top)]} {
   error "unknown top '$top'; known: [array names sources]"
@@ -51,8 +74,16 @@ file mkdir $out
 foreach m $sources($top) {
   read_verilog -sv [file join $root rtl $m.sv]
 }
-synth_design -top $top -part $part -mode out_of_context
+set mod [expr {[info exists module($top)] ? $module($top) : $top}]
+set gen  [expr {[info exists generics($top)] ? $generics($top) : {}}]
+if {[llength $gen]} {
+  synth_design -top $mod -part $part -mode out_of_context -generic $gen
+} else {
+  synth_design -top $mod -part $part -mode out_of_context
+}
 create_clock -name clk -period 10.0 [get_ports clk]
+set_input_delay  0 -clock clk [get_ports -quiet -filter {DIRECTION == IN && NAME != clk}]
+set_output_delay 0 -clock clk [get_ports -quiet -filter {DIRECTION == OUT}]
 
 report_utilization -file [file join $out ${top}_ooc_utilization.rpt]
 
@@ -65,6 +96,10 @@ set metrics(FF)   [count_cells "FD*"]
 set metrics(DSP)  [count_cells "DSP48E1"]
 # BRAM in tiles: a RAMB36 is one tile, a RAMB18 half of one.
 set metrics(BRAM) [format %g [expr {[count_cells "RAMB36*"] + [count_cells "RAMB18*"] / 2.0}]]
+
+# Worst setup slack over all paths, ports included (see set_input_delay / set_output_delay above).
+set metrics(WNS) [format %.3f [get_property SLACK [get_timing_paths -max_paths 1 -setup]]]
+set metrics(SLACK_MET) [expr {$metrics(WNS) >= 0 ? 1 : 0}]
 
 set dsps [get_cells -hierarchical -quiet -filter {REF_NAME == DSP48E1}]
 
@@ -97,7 +132,7 @@ for {set i 0} {$i < [llength $keys]} {incr i} {
   set k [lindex $keys $i]
   set v $metrics($k)
   set sep [expr {$i < [llength $keys] - 1 ? "," : ""}]
-  if {[string is integer -strict $v]} {
+  if {[string is double -strict $v]} {
     puts $fh "  \"$k\": $v$sep"
   } else {
     puts $fh "  \"$k\": \"$v\"$sep"

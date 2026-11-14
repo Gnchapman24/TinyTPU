@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -91,7 +91,25 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
   - **Other ports:** a read port (REQUANT/host, 1-cycle latency) and a write port (host), both forbidden while `busy` (asserted).
   - The controller must present `in_addr` / `in_mode` / `in_bias` in the same cycle as the array's `out_valid`, i.e. delayed by the array latency.
   - **Vivado OOC at N = 8, DEPTH = 512:** 4 BRAM tiles, 0 DSPs, 540 LUTs, 794 FFs. The one `Netlist 29-101` warning (flattened netlist not ideal for floorplanning) is harmless.
-- **Memory:** separate buffers for weights, activations, and accumulators, plus the parameter table and instruction memory. FIFOs sit between the buffers and the array edges.
+- **Memory:** separate buffers for weights, activations, and accumulators, plus the parameter table and instruction memory.
+  - **No FIFOs between the buffers and the array (decided in A3.6).** The address generator is deterministic, BRAM reads have a fixed latency, and nothing downstream stalls, so the buffer read paths feed the array directly. A tag issued with each read comes out with its data and drives the array's `w_load`/`w_row`/`a_valid`.
+  - **Sequencing lives in the address generator (A4.2), not in the buffers:** tile-row order, the N-cycle tile spacing, and the offset between WBUF and ABUF reads (below).
+  - **`buffer_ram` (A3.6, `rtl/buffer_ram.sv`) is used for WBUF, ABUF, and PTAB:**
+    - Simple dual-port BRAM: one read and one write port, each a 2:1 mux between datapath and host, selected by `host_sel`. Assertions check that the unselected side is idle and that no row is read in the cycle it is written.
+    - Read latency is fixed at 1 + `RD_PIPE`. The datapath read's `TAG_W`-bit tag comes out on `rd_tag` with the data. `rd_tag` is 0 in every other cycle, including host reads, so its bits can drive load and valid signals directly.
+    - `LANES` gives per-lane write enables. ABUF uses LANES = N, so REQUANT writes one byte of a vector per cycle and needs no packer. The lanes map onto the BRAM's own byte write enables.
+    - **Settings at N = 8:**
+
+      | Buffer | `RD_PIPE` | Read latency | BRAM tiles | LUTs | FFs |
+      |---|---|---|---|---|---|
+      | WBUF | 2 | 3 | 32 | 198 | 79 |
+      | ABUF | 1 | 2 | 2 | 96 | 4 |
+      | PTAB | 1 | 2 | 1 | 77 | 10 |
+
+      - `RD_PIPE = 1` lets Vivado use the BRAM's output register.
+      - WBUF's second stage registers the 32-way read mux, the path to watch once placed. The post-synthesis estimate meets 100 MHz with any setting.
+    - **WBUF and ABUF latencies differ by 1:** the address generator issues a tile's vector reads 1 cycle after its first row read, so vector 0 enters the array with row 0. The next tile's first row read is at least N cycles after the previous tile's last vector entered the array. `tb/test_feeder.py` confirms this is exactly the minimum.
+    - **PTAB holds one channel per row.** The address generator must collect a column tile's N biases into a register for `acc_unit.in_bias` before the first k-tile's results arrive. REQUANT reads one entry per value, matching the requantizer's one value per cycle.
   - **`sync_fifo` (A2.2):** parameterized `WIDTH` and power-of-two `DEPTH`, valid/ready on both sides, first-word fall-through, and a `count` output.
     - Its combinational read means it is for registers or LUT RAM, not BRAM.
     - `in_ready` depends only on full, even during a same-cycle read.
@@ -311,6 +329,8 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
      - Synthesizes one module out of context and writes `<top>_ooc.json` with cell counts (LUT, FF, DSP, BRAM) and the DSP register settings (AREG, BREG, MREG, PREG).
      - Fails if the module's entry in the script's `expect` table does not match.
      - Every datapath module that must map to DSPs gets an entry. Cells are counted by `REF_NAME` (`LUT*`, `FD*`, `DSP48E1`, `RAMB*`).
+     - A named configuration (e.g. `wbuf`, `abuf`, `ptab`) synthesizes a module with given parameters (`module` and `generics` tables).
+     - `WNS` is the post-synthesis worst setup slack, with zero input and output delay on the ports. `SLACK_MET` is 1 when it is ≥ 0. It is an estimate only; real timing comes from the full build.
      - `BRAM` is in tiles (RAMB36 = 1, RAMB18 = ½), matching the memory map.
      - `CASCADE` counts DSPs whose PCIN is driven by another DSP's PCOUT. Nets that cross module boundaries must be followed with `get_nets -segments` and `get_pins -leaf`, or the count is wrongly 0.
    - **Resource budgets are decided (fixed ceilings + baseline check).** Measure at N = 8 with no debug cores (ILA) in the design.

@@ -121,7 +121,9 @@ A count within its width that still makes an access run past the end of a memory
 
 ## Timing and pipelining notes
 
-- **`WBUF` read path.** 32 RAMB36 are spread across the device, so the read-data mux (64 bits × 32 ways, about 700 LUTs) is pipelined with 2–3 register stages. It is the main timing path to watch at 100 MHz. Its latency is fixed and is absorbed by the address generator's pipeline.
+- **`WBUF` read path.** 32 RAMB36 are spread across the device, so the read data passes through a mux (about 200 LUTs in synthesis). `WBUF` uses `buffer_ram` with `RD_PIPE = 2`: the BRAM output register plus one register after the mux, for a read latency of 3 cycles. This is the main timing path to watch at 100 MHz once placed. Its latency is fixed and is absorbed by the address generator.
+- **`ABUF` and `PTAB`** use `RD_PIPE = 1` (the BRAM output register), for a read latency of 2 cycles. `ABUF` has one write enable per byte, so `REQUANT` writes one byte of a vector per cycle.
+- **No FIFOs feed the array.** Each datapath read carries a tag that comes out with its data and drives the array's load and valid inputs. The address generator issues a tile's vector reads one cycle after its first row read, to cover the latency difference.
 - **`ACC` read-add-write.** Each accumulation reads a row, adds the array output, and writes the row back over a few pipeline cycles. With the ISA loop order (`n`, then `k`, then `m`), the next update of the same row (`m, n`) comes after the next weight tile is loaded, at least N cycles later. That is longer than the pipeline, so no forwarding logic is needed.
   - The address-generator RTL must state this as an assumption.
   - Tests must include M = 1 (the tightest case) to check it.
