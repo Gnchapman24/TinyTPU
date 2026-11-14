@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), and `sync_fifo` exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, and `crc16_ccitt` exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -102,6 +102,9 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
       - check value for ASCII `"123456789"` = 0x29B1
     - **Replies and recovery:** the receiver answers ACK or NAK, and the host resends on NAK. Packets carry a length field, and the receiver discards a partial packet after a timeout.
     - **Testing:** check the CRC module in cocotb against the Python implementation; it is not formally verified. Inject flipped bits, dropped bytes, and bad CRCs.
+    - **Implemented (A2.3):** `rtl/crc16_ccitt.sv` handles one byte per cycle, with `clear` (which may carry the first byte) and a `zero` output. The Python reference is `tinytpu.crc` (`crc16`, `crc_bytes`, `check`).
+      - **Packet check:** feed the CRC the packet bytes after the sync byte *and* the two CRC bytes, high byte first. The packet is intact exactly when `zero` is high; no separate compare is needed. A low-byte-first CRC fails this check.
+      - `tinytpu.crc` is cross-checked against Python's `binascii.crc_hqx`.
     - **Packet format is decided (J1.3); full spec in `docs/uart_protocol.md`:**
       - **Shape:** request `A5 CMD SEQ LEN(u16) payload CRC`; reply `5A CODE SEQ LEN(u16) payload CRC`.
         - The CRC covers everything after the sync byte, and is sent high byte first.
@@ -173,7 +176,7 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
 ```
 rtl/          SystemVerilog sources (one module per file, file name = module name); rtl/isa_pkg.sv
 tb/           cocotb testbenches (test_*.py) + Python reference models; tb/hdl/ test-only HDL wrappers
-host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, later compiler + driver
+host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, crc.py, later compiler + driver
 formal/       SymbiYosys .sby files and property wrappers
 syn/          Vivado TCL (OOC synthesis, reports), XDC constraints, baseline.json
 docs/         MkDocs site (architecture, memory map, ISA, UART protocol) + gen_rtl_docs.py
