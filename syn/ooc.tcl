@@ -21,6 +21,7 @@ set part xc7a35tcpg236-1
 # Sources per module, in compile order.
 set sources(pe)             {pe}
 set sources(systolic_array) {pe systolic_array}
+set sources(acc_unit)       {isa_pkg acc_unit}
 
 # Expectations per module: <metric> <value>. Metrics: LUT, FF (fabric flip-flops), DSP, BRAM,
 # and for each DSP48E1 the register settings AREG, BREG, MREG, PREG (all DSPs must match).
@@ -33,6 +34,9 @@ set expect(pe) {DSP 1 LUT 0 FF 9 BRAM 0 AREG 1 BREG 1 MREG 1 PREG 1}
 #       every DSP. AREG is not checked: Vivado may pull one input-skew register into the DSP
 #       (AREG = 2), which is fine.
 set expect(systolic_array) {DSP 64 CASCADE 56 BRAM 0 BREG 1 MREG 1 PREG 1}
+#   acc_unit (N = 8, DEPTH = 512): the 512 x 256-bit buffer in 4 BRAM tiles (memory map); the
+#       adders in fabric, never in DSPs (the DSP budget is exactly 66).
+set expect(acc_unit) {DSP 0 BRAM 4}
 
 if {![info exists sources($top)]} {
   error "unknown top '$top'; known: [array names sources]"
@@ -54,7 +58,8 @@ proc count_cells {pattern} {
 set metrics(LUT)  [count_cells "LUT*"]
 set metrics(FF)   [count_cells "FD*"]
 set metrics(DSP)  [count_cells "DSP48E1"]
-set metrics(BRAM) [count_cells "RAMB*"]
+# BRAM in tiles: a RAMB36 is one tile, a RAMB18 half of one.
+set metrics(BRAM) [format %g [expr {[count_cells "RAMB36*"] + [count_cells "RAMB18*"] / 2.0}]]
 
 set dsps [get_cells -hierarchical -quiet -filter {REF_NAME == DSP48E1}]
 

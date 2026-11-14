@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -79,6 +79,12 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
     - AREG is 1 or 2: Vivado pulls one skew register into some DSPs, which is fine.
     - 11 LUTs and 871 FFs, the skew and de-skew delay lines.
     - The 64 `Synth 8-3936` warnings (each PE's sum trimmed from 48 to 32 bits) are expected: only 32 bits reach the output, and the cascade itself stays 48 bits.
+- **Accumulators (A3.4, `rtl/acc_unit.sv`):**
+  - **Matmul side:** one array result per cycle (`in_valid`, `in_addr`, `in_mode`, `in_data`, `in_bias`), applied by a 3-stage read-add-write pipeline: overwrite, bias, or accumulate, with 32-bit wraparound.
+  - **No forwarding:** updates of the same row must be ≥ 3 cycles apart. The array's N-cycle tile spacing guarantees this for N ≥ 4. **At N = 2 the controller must insert spacing.** An assertion checks it.
+  - **Other ports:** a read port (REQUANT/host, 1-cycle latency) and a write port (host), both forbidden while `busy` (asserted).
+  - The controller must present `in_addr` / `in_mode` / `in_bias` in the same cycle as the array's `out_valid`, i.e. delayed by the array latency.
+  - **Vivado OOC at N = 8, DEPTH = 512:** 4 BRAM tiles, 0 DSPs, 540 LUTs, 794 FFs. The one `Netlist 29-101` warning (flattened netlist not ideal for floorplanning) is harmless.
 - **Memory:** separate buffers for weights, activations, and accumulators, plus the parameter table and instruction memory. FIFOs sit between the buffers and the array edges.
   - **`sync_fifo` (A2.2):** parameterized `WIDTH` and power-of-two `DEPTH`, valid/ready on both sides, first-word fall-through, and a `count` output.
     - Its combinational read means it is for registers or LUT RAM, not BRAM.
@@ -299,6 +305,7 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
      - Synthesizes one module out of context and writes `<top>_ooc.json` with cell counts (LUT, FF, DSP, BRAM) and the DSP register settings (AREG, BREG, MREG, PREG).
      - Fails if the module's entry in the script's `expect` table does not match.
      - Every datapath module that must map to DSPs gets an entry. Cells are counted by `REF_NAME` (`LUT*`, `FD*`, `DSP48E1`, `RAMB*`).
+     - `BRAM` is in tiles (RAMB36 = 1, RAMB18 = ½), matching the memory map.
      - `CASCADE` counts DSPs whose PCIN is driven by another DSP's PCOUT. Nets that cross module boundaries must be followed with `get_nets -segments` and `get_pins -leaf`, or the count is wrongly 0.
    - **Resource budgets are decided (fixed ceilings + baseline check).** Measure at N = 8 with no debug cores (ILA) in the design.
      - **Hard ceilings:**
