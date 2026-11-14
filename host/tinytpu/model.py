@@ -192,6 +192,35 @@ class Status:
     halt_code: int = 0
 
 
+def range_error(word: int, n: int, depths: dict[Mem, int] | None = None) -> bool:
+    """True if a decode-legal instruction would use an address beyond a memory's depth (ISA error 5).
+
+    This is the pre-execution check of ``docs/isa.md``: the highest address the instruction uses
+    in each memory it touches, so a faulting instruction writes nothing. It is the reference for
+    the hardware range checker.
+
+    Args:
+        word: 128-bit instruction, already free of decode errors (:func:`tinytpu.isa.decode_error`).
+        n: Array size N.
+        depths: Memory depths. Defaults to :data:`tinytpu.isa.DEFAULT_DEPTHS`.
+    """
+    d = isa.DEFAULT_DEPTHS if depths is None else depths
+    f = Fields.decode(word)
+    if f.opcode == Opcode.MATMUL:
+        last = {Mem.WBUF: f.w_base + f.nt * f.kt - 1,
+                Mem.ABUF: f.a_base + f.m * f.kt - 1,
+                Mem.ACC: f.acc_base + f.m * f.nt - 1}
+        if AccMode((f.flags >> isa.FLAG_ACC_MODE_LSB) & 0b11) == AccMode.BIAS:
+            last[Mem.PTAB] = f.p_base + f.nt * n - 1
+    elif f.opcode == Opcode.REQUANT:
+        last = {Mem.ACC: f.acc_base + f.m * f.nt - 1,
+                Mem.ABUF: f.a_base + f.m * f.nt - 1,
+                Mem.PTAB: f.p_base + f.nt * n - 1}
+    else:
+        return False
+    return any(addr >= d[mem] for mem, addr in last.items())
+
+
 class _Fault(Exception):
     def __init__(self, err: SeqErr):
         self.err = err
@@ -241,6 +270,7 @@ class Machine:
     # Execution --------------------------------------------------------------------------------
 
     def _check(self, mem: Mem, addr: int) -> int:
+        # range_error() has already ruled this out; kept as a guard on the model itself.
         if not 0 <= addr < self.depths[mem]:
             raise _Fault(SeqErr.ADDR_RANGE)
         return addr
@@ -257,6 +287,9 @@ class Machine:
             err = isa.decode_error(word, self.depths)
             if err is not SeqErr.NONE:
                 self.status = Status(SeqState.HALTED_ERROR, err, pc)
+                return self.status
+            if range_error(word, self.n, self.depths):
+                self.status = Status(SeqState.HALTED_ERROR, SeqErr.ADDR_RANGE, pc)
                 return self.status
             f = Fields.decode(word)
             try:

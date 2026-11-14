@@ -69,6 +69,8 @@ Addresses and counts are in units, never bytes. Each memory's depth is reported 
 
 Anything else gets NAK `0x03`.
 
+**`ABORT`** stops the sequencer at once. Datapath work already issued drains for a few cycles, and then the state is idle, the error 0, and the PC that of the instruction that was running, which may be partly executed. Sent while nothing runs, it changes nothing. How a pending `RUN`/`INFER` reply interacts with `ABORT` is defined with the packet engine (A4.1).
+
 **While a program is running,** only `INFO`, `STATUS` and `ABORT` are accepted. Every other command gets NAK `0x06` (busy). `RUN` and `INFER` reply only once the program halts, and the receiver keeps listening meanwhile, so `ABORT` can still be sent.
 
 `INFER` replies with the status block even if the program halted with an error. In that case its output bytes are whatever the output region holds.

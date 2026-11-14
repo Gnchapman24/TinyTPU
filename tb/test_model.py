@@ -311,6 +311,67 @@ def test_machine_address_range_error():
     assert (st.state, st.err, st.pc) == (SeqState.HALTED_ERROR, SeqErr.ADDR_RANGE, 0)
 
 
+def test_machine_address_range_error_writes_nothing():
+    """Error 5 is found before the instruction starts: ACC is untouched although the first
+    tiles' addresses were in range."""
+    mach = model.Machine(n=4, depths={**isa.DEFAULT_DEPTHS, Mem.ACC: 8})
+    mach.acc[:] = 7
+    mach.load_program([
+        isa.matmul(w_base=0, a_base=0, acc_base=0, kt=1, nt=3, m=3, act_signed=False,
+                   acc_mode=AccMode.OVERWRITE),    # ACC rows 0..8: only the last is out of range
+        isa.halt(),
+    ])
+    st = mach.run()
+    assert (st.state, st.err, st.pc) == (SeqState.HALTED_ERROR, SeqErr.ADDR_RANGE, 0)
+    assert (mach.acc == 7).all()
+
+
+def _addresses(word: int, n: int) -> dict:
+    """Every address the docs/isa.md loops touch, per memory (naive enumeration)."""
+    f = isa.Fields.decode(word)
+    used: dict = {mem: set() for mem in Mem}
+    if f.opcode == isa.Opcode.MATMUL:
+        bias = (f.flags >> isa.FLAG_ACC_MODE_LSB) & 3 == AccMode.BIAS
+        for nt_i in range(f.nt):
+            for k in range(f.kt):
+                used[Mem.WBUF].add(f.w_base + nt_i * f.kt + k)
+                for m in range(f.m):
+                    used[Mem.ABUF].add(f.a_base + m * f.kt + k)
+                    used[Mem.ACC].add(f.acc_base + m * f.nt + nt_i)
+                    if k == 0 and bias:
+                        used[Mem.PTAB].update(f.p_base + nt_i * n + c for c in range(n))
+    elif f.opcode == isa.Opcode.REQUANT:
+        for nt_i in range(f.nt):
+            for m in range(f.m):
+                used[Mem.ACC].add(f.acc_base + m * f.nt + nt_i)
+                used[Mem.ABUF].add(f.a_base + m * f.nt + nt_i)
+                used[Mem.PTAB].update(f.p_base + nt_i * n + c for c in range(n))
+    return used
+
+
+def test_range_error_matches_enumeration():
+    """range_error() is exactly "some address the loops generate is out of range"."""
+    rng = random.Random(7)
+    n = 4
+    depths = {Mem.IMEM: 16, Mem.WBUF: 32, Mem.ABUF: 16, Mem.ACC: 16, Mem.PTAB: 32}
+    seen = {True: 0, False: 0}
+    for _ in range(3000):
+        kt, nt, m = rng.randint(1, 6), rng.randint(1, 6), rng.randint(1, 6)
+        if rng.random() < 0.5:
+            word = isa.matmul(w_base=rng.randrange(32), a_base=rng.randrange(16), acc_base=rng.randrange(16),
+                              p_base=rng.randrange(32), kt=kt, nt=nt, m=m, act_signed=False,
+                              acc_mode=rng.choice(list(AccMode)[:3]))
+        else:
+            word = isa.requant(a_dst=rng.randrange(16), acc_base=rng.randrange(16), p_base=rng.randrange(32),
+                               nt=nt, m=m, relu=False)
+        assert isa.decode_error(word, depths) is SeqErr.NONE
+        want = any(a >= depths[mem] for mem, addrs in _addresses(word, n).items() for a in addrs)
+        assert model.range_error(word, n, depths) == want
+        seen[want] += 1
+    assert min(seen.values()) > 500, seen
+    assert not model.range_error(isa.halt(), n, depths) and not model.range_error(isa.nop(), n, depths)
+
+
 def test_machine_pc_overrun():
     mach = model.Machine(n=4, depths={**isa.DEFAULT_DEPTHS, Mem.IMEM: 4})
     mach.load_program([isa.nop()] * 4)

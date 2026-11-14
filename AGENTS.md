@@ -214,12 +214,14 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
         - `WRITE` / `READ` of the memories (instruction memory, weights, activations, accumulators, parameter table), in each memory's ISA unit.
         - `RUN` (start PC): replies once the program halts, with the final status.
         - `STATUS`, `ABORT`, `RESET`: `RESET` returns to idle and keeps memory; `btnC` does the same.
+        - **`ABORT` is decided (A4.2):** it stops issuing work at once, lets issued datapath work drain, then goes idle with error 0 and PC = the instruction that was running. No new error code.
         - `INFER`: writes the input, runs, and replies with status plus output data, in one round trip. It can be built after the other commands work.
         - **While running:** only `STATUS`, `ABORT`, and `INFO` are accepted. Anything else gets a NAK with a busy code. The host never accesses a memory while the sequencer runs.
       - **Error halts** record an error code and the faulting PC, for any of:
         - illegal opcode, non-zero reserved bit, acc_mode 11, or a count of 0
         - any generated address at or beyond its buffer's depth
         - the PC running past the end of instruction memory
+      - **Address-range errors (5) are checked before an instruction starts (decided, A4.2):** from the highest address per memory (table in `docs/isa.md`), so a faulting instruction writes nothing, in the hardware and in `tinytpu.model`. The address generators therefore never produce an out-of-range address.
     - The sequencer (program counter, fetch, decode) and the address-generator FSM are in scope for the formal tier, in particular loop bounds and termination. The address arithmetic itself is checked in cocotb.
   - The single source of truth is `docs/isa.md`. It has full semantics, the error codes (1–6, confirmed in J1.3), and a worked example program. The summary below must stay consistent with it.
   - Don't change opcodes or encodings without asking.

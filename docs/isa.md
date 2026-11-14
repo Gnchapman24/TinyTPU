@@ -154,7 +154,21 @@ The sequencer halts with status **halted error**, an error code, and the faultin
 
 The executable reference for all of this is `tinytpu.model.Machine` ([API](api/model.md)), which the hardware is tested against.
 
-Codes 1–4 are detected at decode, before any memory is changed. Code 5 is detected by the address generator as addresses are produced, so the instruction may have partly executed. Code 6 is detected at fetch.
+Codes 1–4 are detected at decode, before any memory is changed. Code 6 is detected at fetch.
+
+Code 5 is also checked **before the instruction starts**, so a faulting instruction writes nothing. The check computes the highest address the instruction would use in each memory it touches:
+
+| Instruction | Memory | Highest address |
+|---|---|---|
+| `MATMUL` | `WBUF` | `w_base + nt·kt − 1` |
+| `MATMUL` | `ABUF` | `a_base + m·kt − 1` |
+| `MATMUL` | `ACC` | `acc_base + m·nt − 1` |
+| `MATMUL`, `acc_mode = bias` only | `PTAB` | `p_base + nt·N − 1` |
+| `REQUANT` | `ACC` | `acc_base + m·nt − 1` |
+| `REQUANT` | `ABUF` (`a_dst`) | `a_dst + m·nt − 1` |
+| `REQUANT` | `PTAB` | `p_base + nt·N − 1` |
+
+Error 5 is raised exactly when any of these is at or beyond that memory's depth. Because the loops visit every address up to these, this is the same condition as "some generated address is out of range".
 
 ## Host interaction
 
@@ -167,7 +181,7 @@ Host commands are not instructions. They are handled by the protocol engine arou
 | `READ` | Returns `count` units from a memory starting at an address | no (NAK, busy) |
 | `RUN` | Starts the sequencer at a PC. **The reply is sent when the program halts**, with the final status | no |
 | `STATUS` | Returns state (idle / running / halted OK / halted error), PC, halt code, error code | yes |
-| `ABORT` | Stops a running program and returns its status | yes |
+| `ABORT` | Stops a running program at once and returns its status: state idle, error 0, PC of the instruction that was running. That instruction may be partly executed. When nothing is running, it changes nothing | yes |
 | `RESET` | Returns the sequencer and protocol state to idle; memory contents are kept. The `btnC` button does the same | yes |
 | `INFER` | Writes input data to `ABUF`, runs from a PC, then replies with status plus `count` units read from a memory: a full inference in one round trip | no |
 
