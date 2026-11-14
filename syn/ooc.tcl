@@ -28,6 +28,7 @@ set sources(pe)             {pe}
 set sources(systolic_array) {pe systolic_array}
 set sources(acc_unit)       {isa_pkg acc_unit}
 set sources(requant)        {requant}
+set sources(sequencer)      {isa_pkg instr_decode range_check sequencer}
 set sources(wbuf)           {buffer_ram}
 set sources(abuf)           {buffer_ram}
 set sources(ptab)           {buffer_ram}
@@ -62,6 +63,9 @@ set expect(requant) {DSP 2 CASCADE 1 BRAM 0 MREG 1 PREG 1}
 #       no DSPs, setup met. WBUF's 32 RAMB36 need a read-data mux: RD_PIPE = 2 uses the BRAM
 #       output register plus one fabric register after the mux (the path to watch once placed).
 #       ABUF's byte-lane writes must use the BRAM's own write enables (still 2 tiles).
+#   sequencer (with instr_decode and range_check): control only. The range check's products are
+#       shift-and-add, so no DSP may appear (the DSP budget is exactly 66).
+set expect(sequencer) {DSP 0 BRAM 0 SLACK_MET 1}
 set expect(wbuf) {DSP 0 BRAM 32 SLACK_MET 1}
 set expect(abuf) {DSP 0 BRAM 2 SLACK_MET 1}
 set expect(ptab) {DSP 0 BRAM 1 SLACK_MET 1}

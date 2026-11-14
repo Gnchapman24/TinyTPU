@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), the decoder (`instr_decode`), range checker (`range_check`) and sequencer (`sequencer`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -223,6 +223,26 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
         - the PC running past the end of instruction memory
       - **Address-range errors (5) are checked before an instruction starts (decided, A4.2):** from the highest address per memory (table in `docs/isa.md`), so a faulting instruction writes nothing, in the hardware and in `tinytpu.model`. The address generators therefore never produce an out-of-range address.
     - The sequencer (program counter, fetch, decode) and the address-generator FSM are in scope for the formal tier, in particular loop bounds and termination. The address arithmetic itself is checked in cocotb.
+    - **Implemented (A4.2, part 1):**
+      - **`instr_decode`:** combinational errors 1–4, in the reference order. Tested against `tinytpu.isa.decode_error` with every single-bit flip of legal words, at default and small depths.
+      - **`range_check`:** error 5 before execution, using `tinytpu.model.range_error`'s condition `base + product > depth`.
+        - The products `nt·kt`, `m·kt`, `m·nt` are shift-and-add over 12 cycles, so it uses no DSPs. Latency is COUNT_W + 2 = 14 cycles.
+        - Operands follow the instruction while idle, and the compare is registered; both are for timing.
+      - **`sequencer`:** fetch over a valid handshake (any IMEM latency), decode, range check, then dispatch with `exec_start` / `exec_instr` / `exec_done`.
+        - It also handles HALT, NOP, PC overrun (6), and ABORT via `exec_abort` / `exec_idle`.
+        - `exec_instr` is stable from `exec_start` to `exec_done`; this is how "`act_signed` is stable while busy" is guaranteed.
+        - The port is `abort_req`, because Verilator rejects `abort` (a C++ word).
+      - **Formal (`formal/sequencer.sby`):** proved for any program (IMEM returns solver-chosen words), with an execution unit that finishes or drains within 3 cycles. Properties:
+        - fetch order: the first fetch is at `start_pc`, then +1 each time
+        - dispatch only when idle and never during ABORT
+        - `exec_instr` stable while executing
+        - correct PC and status on every stop
+        - ABORT ends idle with error 0
+        - per-instruction and ABORT cycle bounds; with the PC bounded by IMEM depth, these give termination
+      - **`formal/range_check_stub.sv`** replaces `range_check` in that proof: same timing, and the result is the instruction's parity (solver-controlled).
+        - Don't use `(* anyseq *)` with yosys-slang. The attribute is ignored, and Yosys then folds the undriven X into each FSM bit independently, producing impossible transitions.
+      - **cocotb (`tb/test_sequencer.py`):** environment models with IMEM latency 1 and 3. Every run's executed-instruction trace and final status must equal `tinytpu.model.Machine`'s, covering every error code, ABORT at every cycle of a program, and reset.
+      - **Vivado OOC:** `sequencer` (with decoder and range check) has 0 DSPs, 362 LUTs, about 400 FFs, and +3.3 ns post-synthesis slack. The worst path is decode → halt-code load.
   - The single source of truth is `docs/isa.md`. It has full semantics, the error codes (1–6, confirmed in J1.3), and a worked example program. The summary below must stay consistent with it.
   - Don't change opcodes or encodings without asking.
   - The matmul instruction carries an `act_signed` mode field (see §2).

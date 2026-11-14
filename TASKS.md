@@ -68,7 +68,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | ID | Owner | Task | Depends on |
 |---|---|---|---|
 | [ ] A4.1 | Agent | Packet parser (length, CRC check, ACK/NAK, timeout) + formal properties. | A2.1–A2.3, J1.3 |
-| [ ] A4.2 | Agent | Instruction decoder + control FSMs + formal properties (including: `act_signed` is stable while the array is busy). | A1.5 |
+| [~] A4.2 | Agent | Instruction decoder + control FSMs + formal properties (including: `act_signed` is stable while the array is busy). Part 1 done: `instr_decode`, `range_check` (error 5 before execution, decided), `sequencer` with formal proof; ABORT semantics decided. Next: MATMUL address generator, REQUANT path, `tpu_core` end-to-end test. | A1.5 |
 
 ## Phase 5 — Integration and implementation
 

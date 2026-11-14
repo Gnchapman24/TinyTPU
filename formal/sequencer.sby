@@ -1,0 +1,31 @@
+# sequencer formal proof (task A4.2): fetch order, dispatch rules, instruction stability while
+# executing (act_signed cannot change mid-MATMUL), stop reporting, ABORT, and termination, for
+# every possible program (IMEM returns solver-chosen words). See sequencer_formal.sv.
+# Uses the real instr_decode; range_check is replaced by formal/range_check_stub.sv (same timing,
+# solver-chosen result), whose arithmetic is verified in tb/test_range_check.py.
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+cover: mode cover
+cover: depth 60
+
+[engines]
+prove: abc pdr
+cover: smtbmc
+
+[script]
+plugin -i slang
+read_slang -DFORMAL -DASSERTIONS isa_pkg.sv instr_decode.sv range_check_stub.sv sequencer.sv sequencer_formal.sv --top sequencer_formal
+prep -top sequencer_formal
+opt -fast
+
+[files]
+../rtl/isa_pkg.sv
+../rtl/instr_decode.sv
+range_check_stub.sv
+../rtl/sequencer.sv
+sequencer_formal.sv
