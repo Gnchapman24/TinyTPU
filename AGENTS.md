@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. The repo has tooling and CI but no RTL or tests yet. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, and the UART (`uart_rx`, `uart_tx`) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -85,6 +85,11 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
     - The receiver samples at mid-bit using a cycle counter. No 16× oversampling.
     - There is no hardware flow control (only TX and RX are wired). The protocol must ensure the host never sends faster than the FPGA can accept, e.g. by waiting for an acknowledgement per command or block. Keep a small receive FIFO.
     - cocotb tests override `CLKS_PER_BIT` with a small value (e.g. 8) for speed, plus at least one test at 100. Formal proofs use `CLKS_PER_BIT` of 4–8.
+    - **Implemented (A2.1):**
+      - `uart_tx`: valid/ready, back-to-back at exactly 10 bits per byte.
+      - `uart_rx`: 2-flop synchronizer, half-bit start-bit check that rejects glitches, one-cycle `valid` or `frame_err` pulses, no back-pressure.
+      - After a framing error, `uart_rx` waits for an idle (high) line before it looks for the next start bit.
+      - Tested at `CLKS_PER_BIT` 8 and 100, including ±3% baud error at 100.
     - Host docs tell Windows users to set the FTDI latency timer to 1 ms (Device Manager → Port Settings → Advanced).
   - Framing and error detection are **decided (Option D)**:
     - **Bytes:** 8N1. The receiver raises a framing-error flag when the stop bit is low.
@@ -167,7 +172,6 @@ tb/           cocotb testbenches (test_*.py) + Python reference models; tb/hdl/ 
 host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, later compiler + driver
 formal/       SymbiYosys .sby files and property wrappers
 syn/          Vivado TCL (OOC synthesis, reports), XDC constraints, baseline.json
-host/         Python host driver (pyserial)
 docs/         MkDocs site (architecture, memory map, ISA, UART protocol) + gen_rtl_docs.py
 tools/        versions.env (pinned tool versions), setup notes
 pyproject.toml, uv.lock   Python 3.12 project and locked dependencies
@@ -223,6 +227,15 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
    - Required UART properties:
      - the framing-error flag rises when the stop bit is low
      - the receiver never drops a byte while its FIFO has space
+   - **UART proof (done, `formal/uart.sby` + `formal/uart_loopback.sv`):** `uart_tx` drives `uart_rx` over a line where the solver can force any stop bit low and hold a break for 0–3 extra bits.
+     - Proved: good frames arrive as exactly the byte sent; corrupted frames give `frame_err` and never a byte; every frame gives its pulse within a fixed bound; no pulse without a frame in flight; plus each module's own assertions.
+     - The FIFO half of "never drops a byte" is proved with `sync_fifo` (A2.2) and the packet engine (A4.1).
+   - **Harnesses and engines:**
+     - Multi-module properties live in harness modules in `formal/`, which the `.sby` file names as top. Harnesses are formal-only, so their `assume`s need no `ifdef`.
+     - Prove with `abc pdr`: it proves for all time without hand-written induction invariants. Cover with `smtbmc`.
+     - Use the smallest legal parameters (e.g. `CLKS_PER_BIT = 4`).
+   - **Check every proof and testbench against injected bugs** before calling it done: break the RTL in a few plausible ways and confirm both formal and simulation fail. A proof that never fails proves nothing.
+   - **Parameter-dependent assertions:** an assertion that is always true for some parameter values (e.g. a counter range check when the limit is a power of two) triggers Verilator `-Wall` warnings in test builds. Put it in a generate-`if` that only exists when it can fail.
    - **Decided:** the formal front-end is **yosys-slang**, which reads SystemVerilog through the slang compiler and is bundled in the OSS CAD Suite.
      - `.sby` files load the plugin with `plugin -i slang` and read sources with `read_slang`, instead of `read -formal`.
      - If a module hits a yosys-slang bug, it may fall back to Yosys's built-in reader. Note why in the `.sby` file.

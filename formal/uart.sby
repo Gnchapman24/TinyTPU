@@ -1,0 +1,27 @@
+# UART formal proof (task A2.1): uart_tx -> uart_rx loopback with stop-bit corruption.
+# See uart_loopback.sv for the properties. CLKS_PER_BIT = 4 keeps the state space small;
+# the RTL logic is the same at every CLKS_PER_BIT.
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+cover: mode cover
+cover: depth 110
+
+[engines]
+# PDR (IC3) proves the properties for all time without hand-written induction invariants.
+prove: abc pdr
+cover: smtbmc
+
+[script]
+plugin -i slang
+read_slang -DFORMAL -DASSERTIONS uart_tx.sv uart_rx.sv uart_loopback.sv --top uart_loopback
+prep -top uart_loopback
+
+[files]
+../rtl/uart_tx.sv
+../rtl/uart_rx.sv
+uart_loopback.sv
