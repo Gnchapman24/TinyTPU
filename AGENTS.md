@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -59,6 +59,12 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
   - Never mix signed and unsigned operands in one SystemVerilog expression.
   - Register inputs, product, and output so Vivado can absorb them into AREG/BREG/MREG/PREG.
   - `(* use_dsp = "yes" *)` is allowed when inference falls back to LUTs.
+  - **Implemented (A3.2, `rtl/pe.sv`):**
+    - Ports: `a_in` / `a_out` (horizontal, 1-cycle delay), `w_in` / `w_load`, `psum_in` / `psum_out` (48-bit, vertical).
+    - Registers: `a_q`, `w_q`, `m_q = a_q*w_q`, `p_q = psum_in + m_q`. Latency: a_in to its product in psum_out is 3 cycles; psum_in to psum_out is 1 cycle. Hence the row skew of 1 cycle per row.
+    - **Weight loading is decided: a per-row load enable on a shared column bus, not a shift chain.** On load cycle *i* the array raises `w_load` for row *i*, and every PE in that row captures tile row *i* from its column's `w_in`. That is the WBUF row order, and it lets the stationary weight live in the DSP's BREG.
+    - `use_dsp = "yes"` sits on `m_q`/`p_q`, because without it Vivado builds the 9x9 multiplier from about 136 LUTs. The attribute goes on signals, not on `module`, because the doc header must sit directly above `module`.
+    - **Vivado OOC result:** 1 DSP48E1, 0 LUTs, 9 FFs, AREG = BREG = MREG = PREG = 1. The activation register is duplicated: one copy is the DSP's AREG, the other is the fabric copy for `a_out`.
 - **Memory:** separate buffers for weights, activations, and accumulators, plus the parameter table and instruction memory. FIFOs sit between the buffers and the array edges.
   - **`sync_fifo` (A2.2):** parameterized `WIDTH` and power-of-two `DEPTH`, valid/ready on both sides, first-word fall-through, and a `count` output.
     - Its combinational read means it is for registers or LUT RAM, not BRAM.
@@ -187,7 +193,8 @@ host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, 
               model.py (bit-exact reference model), later compiler
 formal/       SymbiYosys .sby files and property wrappers
 syn/          Vivado: basys3.xdc, build.tcl (batch build of a top), program.tcl (JTAG),
-              vivado.ps1 (Windows wrapper), later OOC scripts and baseline.json
+              ooc.tcl (per-module OOC synthesis + resource expectations), vivado.ps1 (Windows
+              wrapper), later baseline.json
 docs/         MkDocs site (architecture, memory map, ISA, UART protocol) + gen_rtl_docs.py
 tools/        versions.env (pinned tool versions), setup notes
 pyproject.toml, uv.lock   Python 3.12 project and locked dependencies
@@ -264,6 +271,7 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
      - Prove with `abc pdr`: it proves for all time without hand-written induction invariants. Cover with `smtbmc`.
      - Use the smallest legal parameters (e.g. `CLKS_PER_BIT = 4`).
    - **Check every proof and testbench against injected bugs** before calling it done: break the RTL in a few plausible ways and confirm both formal and simulation fail. A proof that never fails proves nothing.
+  - For registered outputs, also check that driving new inputs does *not* change the outputs before the clock edge. Otherwise a combinational pass-through bug can look correct.
    - **Parameter-dependent assertions:** an assertion that is always true for some parameter values (e.g. a counter range check when the limit is a power of two) triggers Verilator `-Wall` warnings in test builds. Put it in a generate-`if` that only exists when it can fail.
    - **Decided:** the formal front-end is **yosys-slang**, which reads SystemVerilog through the slang compiler and is bundled in the OSS CAD Suite.
      - `.sby` files load the plugin with `plugin -i slang` and read sources with `read_slang`, instead of `read -formal`.
@@ -273,6 +281,10 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
 3. **Implementation metrics: Vivado TCL, run locally or on a self-hosted runner**
    - Vivado is too large to run on GitHub-hosted CI.
    - Run out-of-context `synth_design`, then `report_utilization`, `report_timing_summary`, and `report_power`.
+   - **Per-module OOC checks (`syn/ooc.tcl`, Windows: `.\syn\vivado.ps1 -Ooc -Top <module>`):**
+     - Synthesizes one module out of context and writes `<top>_ooc.json` with cell counts (LUT, FF, DSP, BRAM) and the DSP register settings (AREG, BREG, MREG, PREG).
+     - Fails if the module's entry in the script's `expect` table does not match.
+     - Every datapath module that must map to DSPs gets an entry. Cells are counted by `REF_NAME` (`LUT*`, `FD*`, `DSP48E1`, `RAMB*`).
    - **Resource budgets are decided (fixed ceilings + baseline check).** Measure at N = 8 with no debug cores (ILA) in the design.
      - **Hard ceilings:**
        - LUT ≤ 25% (5,200)
