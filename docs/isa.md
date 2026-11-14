@@ -150,7 +150,9 @@ The sequencer halts with status **halted error**, an error code, and the faultin
 | 3 | `MATMUL` with `acc_mode = 11` |
 | 4 | A count (`kt`, `nt`, `m`) of 0 |
 | 5 | A generated address at or beyond its memory's depth |
-| 6 | The PC ran past the end of instruction memory without a `HALT` |
+| 6 | The PC ran past the end of instruction memory without a `HALT`. The reported PC is the IMEM depth, one past the last instruction. |
+
+The executable reference for all of this is `tinytpu.model.Machine` ([API](api/model.md)), which the hardware is tested against.
 
 Codes 1–4 are detected at decode, before any memory is changed. Code 5 is detected by the address generator as addresses are produced, so the instruction may have partly executed. Code 6 is detected at fetch.
 

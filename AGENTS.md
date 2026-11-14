@@ -183,7 +183,8 @@ rtl/          SystemVerilog sources (one module per file, file name = module nam
 tb/           cocotb testbenches (test_*.py) + Python reference models; tb/hdl/ test-only HDL wrappers;
               tb/uart_bfm.py (UartSource/UartSink serial-line models for end-to-end tests)
 host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, crc.py, packet.py,
-              link.py (serial link with resend rules), bringup.py (board test CLI), later compiler
+              link.py (serial link with resend rules), bringup.py (board test CLI),
+              model.py (bit-exact reference model), later compiler
 formal/       SymbiYosys .sby files and property wrappers
 syn/          Vivado: basys3.xdc, build.tcl (batch build of a top), program.tcl (JTAG),
               vivado.ps1 (Windows wrapper), later OOC scripts and baseline.json
@@ -232,6 +233,12 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
 
 1. **Functional: cocotb + Verilator**
    - Reference results come from NumPy using the same integer semantics as the RTL (same signedness, accumulator width, and requantization).
+     - **The reference is `tinytpu.model` (A3.1):**
+       - `matmul` / `requant` / `wrap32` for datapath tests.
+       - `Machine` runs ISA programs instruction by instruction, with canonical layouts, all three acc modes, write-back, and every error halt, for sequencer and end-to-end tests.
+       - `pack_weights` / `pack_activations` / `unpack_*` for memory images.
+     - Never re-derive expected values in a testbench; call the model.
+     - The model itself is tested against naive pure-Python references in `tb/test_model.py`, including the `docs/isa.md` example program. If the ISA changes, the model changes in the same commit.
    - Compare bit-exactly; no tolerance.
    - Include edge cases: all −128 or all 127, zeros, identity matrices, random.
    - Array-size coverage:

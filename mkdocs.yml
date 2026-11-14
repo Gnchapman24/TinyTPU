@@ -20,6 +20,7 @@ nav:
   - RTL modules: rtl/index.md
   - Python API:
       - tinytpu.isa: api/isa.md
+      - tinytpu.model: api/model.md
       - tinytpu.crc: api/crc.md
       - tinytpu.packet: api/packet.md
       - tinytpu.link: api/link.md

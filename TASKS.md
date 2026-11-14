@@ -56,7 +56,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 
 | ID | Owner | Task | Depends on |
 |---|---|---|---|
-| [ ] A3.1 | Agent | NumPy reference model: INT8 D-lite semantics, INT32 wraparound, tiling, requantization formula. Unit-tested in isolation. | — |
+| [x] A3.1 | Agent | NumPy reference model: INT8 D-lite semantics, INT32 wraparound, tiling, requantization formula. Unit-tested in isolation. | — |
 | [ ] A3.2 | Agent | PE module + standalone Vivado synthesis check that it maps to exactly 1 DSP48E1 with pipeline registers absorbed. | A0.4 |
 | [ ] A3.3 | Agent | `systolic_array` (N parameter, edge sign extension, input skew, output de-skew, PCOUT→PCIN cascade) + tests at N = 2, 4, 8. | A3.1, A3.2 |
 | [ ] A3.4 | Agent | Column accumulators + accumulator buffer + bias preload (if in the ISA) + tests. | A3.3, J1.4 |
