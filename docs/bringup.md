@@ -49,14 +49,44 @@ If nothing comes back:
 - check the baud rate
 - check that `led[0]` is blinking, which means the bitstream is loaded
 
+## Finding the COM port
+
+The Basys3's FTDI chip has two channels, JTAG and UART. Windows may create a COM port for **both**, with identical USB details. Other FT2232H boards, such as a Nandland Go Board, also match. In PowerShell, from the repo folder, with the host environment set up as in `tools/setup.md`:
+
+```powershell
+$env:UV_PROJECT_ENVIRONMENT = "$env:LOCALAPPDATA\tinytpu\venv"   # unless set permanently
+uv run --no-default-groups python -m tinytpu.bringup --list-ports
+uv run --no-default-groups python -m tinytpu.bringup --probe
+```
+
+- `--list-ports` lists every FT2232H port.
+- `--probe` sends one short ECHO packet to each and reports which one answers. It needs the bitstream loaded and `sw[0]` off.
+- Close Vivado's Hardware Manager first, or it may hold the port.
+
 ## Test 2: packet echo
 
-Set `sw[0]` off. Each `ECHO` request (payload up to 256 bytes) gets an ACK reply with the same payload and a valid CRC.
-- A corrupted request gets a NAK (`led[4]`).
-- An unknown command gets a NAK (`led[7]`).
-- A request cut off part-way gets no reply after 5 ms (`led[6]`).
+Set `sw[0]` off, press `btnC`, then run (with the port found above):
 
-The host test script for this is task A2.5. Until it exists, a packet can be built in Python with `tinytpu.packet.build_request(Cmd.ECHO, seq, payload)` and sent with pyserial.
+```powershell
+uv run --no-default-groups python -m tinytpu.bringup --port COM7
+```
+
+It runs seven checks and prints `PASS`/`FAIL` for each, then a summary of link statistics (resends, timeouts):
+
+| Check | What it does | LED afterwards |
+|---|---|---|
+| `ping` | 4 short echoes | — |
+| `sizes` | every interesting payload length from 0 to 256, plus 100 random ones | — |
+| `throughput` | 50 back-to-back 256-byte echoes; prints ms per round trip and kB/s | — |
+| `bad_crc` | a deliberately corrupted request must get NAK `BAD_CRC` | `led[4]` on |
+| `unknown_cmd` | `INFO` (not in the bring-up design) must get NAK `UNKNOWN_CMD` | `led[7]` on |
+| `too_long` | a 300-byte payload must get NAK `TOO_LONG` | `led[7]` on |
+| `timeout` | a request cut off part-way must get no reply; the next echo must work | `led[6]` on |
+
+- The exit status is 0 only if every check passed.
+- **Expected round trip:** about 5–8 ms per 256-byte echo, of which about 5.3 ms is wire time at 1 Mbaud. The rest is USB and driver latency, which is why the FTDI latency timer should be 1 ms.
+- **`--raw`** (with `sw[0]` on) tests raw byte echo instead.
+- Options: `--count`, `--rounds`, `--seed`. Use `--help` for details.
 
 ## Limits of this design
 

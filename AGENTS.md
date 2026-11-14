@@ -95,6 +95,11 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
       - After a framing error, `uart_rx` waits for an idle (high) line before it looks for the next start bit.
       - Tested at `CLKS_PER_BIT` 8 and 100, including ±3% baud error at 100.
     - Host docs tell Windows users to set the FTDI latency timer to 1 ms (Device Manager → Port Settings → Advanced).
+    - **Host link (A2.5):** `tinytpu.link.Link` implements the protocol's host rules: one request in flight, single `write()` per packet, resend with the **same** SEQ after a timeout, bad reply, or NAK BAD_CRC, 10 ms silence before each resend, and `RESET` + `LinkError` after 3 resends. Other NAKs are returned, not resent.
+      - It is tested against `tb/fake_echo.py`, a Python model of the bring-up board with fault injection.
+    - **Port discovery:** Windows can show **two** COM ports for the Basys3's FT2232H (JTAG and UART channels) with identical USB details, and other FT2232H boards match too.
+      - Never pick one by position. Use `--port`, or `python -m tinytpu.bringup --probe`, which sends one ECHO to each and reports which answers.
+      - Seen on the dev machine: COM6 and COM7, both `0403:6010`, serial "8".
   - Framing and error detection are **decided (Option D)**:
     - **Bytes:** 8N1. The receiver raises a framing-error flag when the stop bit is low.
     - **Packets:** every command or data packet ends with a CRC-16/CCITT-FALSE checksum, sent high byte first:
@@ -178,7 +183,7 @@ rtl/          SystemVerilog sources (one module per file, file name = module nam
 tb/           cocotb testbenches (test_*.py) + Python reference models; tb/hdl/ test-only HDL wrappers;
               tb/uart_bfm.py (UartSource/UartSink serial-line models for end-to-end tests)
 host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, crc.py, packet.py,
-              later compiler + driver
+              link.py (serial link with resend rules), bringup.py (board test CLI), later compiler
 formal/       SymbiYosys .sby files and property wrappers
 syn/          Vivado: basys3.xdc, build.tcl (batch build of a top), program.tcl (JTAG),
               vivado.ps1 (Windows wrapper), later OOC scripts and baseline.json

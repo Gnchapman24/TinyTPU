@@ -22,6 +22,8 @@ nav:
       - tinytpu.isa: api/isa.md
       - tinytpu.crc: api/crc.md
       - tinytpu.packet: api/packet.md
+      - tinytpu.link: api/link.md
+      - tinytpu.bringup: api/bringup.md
 
 # Python API pages use `::: module.path` blocks (Google-style docstrings).
 plugins:
