@@ -188,3 +188,41 @@ def test_main_refuses_to_guess_between_ports(monkeypatch, capsys):
 def test_bringup_raw_mode():
     link, _ = make(FakeEchoBoard(raw=True))
     assert run_all(link, count=10, raw=True, out=lambda _: None)
+
+
+class _SilentBoard:
+    """Never answers; each read advances a fake clock by its timeout (no real waiting)."""
+
+    def __init__(self, clock: list[float]):
+        self.clock = clock
+        self.timeout: float | None = 0.0
+        self.writes: list[bytes] = []
+
+    def write(self, data: bytes) -> int:
+        self.writes.append(bytes(data))
+        return len(data)
+
+    def read(self, size: int = 1) -> bytes:
+        self.clock[0] += self.timeout or 0.0
+        return b""
+
+    def close(self) -> None:
+        pass
+
+
+def test_injected_clock_drives_every_deadline():
+    """With an injected clock, timeouts and quiet times follow it, not wall-clock time: a
+    simulated transport can run the real resend rules at simulated speed."""
+    import time as real_time
+
+    now = [1000.0]
+    board = _SilentBoard(now)
+    link = Link(board, timeout=5.0, silence=1.0, clock=lambda: now[0])
+    t0 = real_time.monotonic()
+    with pytest.raises(LinkError):
+        link.transact(Cmd.STATUS)
+    assert real_time.monotonic() - t0 < 1.0               # 4 x 5 s of fake time, no real waiting
+    assert now[0] - 1000.0 >= 4 * 5.0                     # every attempt waited its full timeout
+    statuses = [p for p in board.writes if p[1] == Cmd.STATUS]
+    assert len(statuses) == 4 and len({p[2] for p in statuses}) == 1   # same SEQ every time
+    assert board.writes[-1][1] == Cmd.RESET

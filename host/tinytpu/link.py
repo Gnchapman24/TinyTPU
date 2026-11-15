@@ -12,7 +12,9 @@ host-side recovery rules:
 Every other NAK is returned to the caller unchanged, because resending would not help.
 
 The transport is anything with pyserial's ``read``/``write``/``timeout`` interface, so tests can
-substitute a simulated device.
+substitute a simulated device. The clock is injectable too: every deadline is measured with
+``clock()`` (default :func:`time.monotonic`), so a simulated transport can supply simulated
+time and the same resend rules run unchanged in a cocotb testbench.
 
 Example (Windows, board on COM5):
     >>> from tinytpu.link import Link            # doctest: +SKIP
@@ -24,7 +26,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from tinytpu.packet import (
     CRC_LEN,
@@ -100,11 +102,15 @@ class Link:
         timeout: Default seconds to wait for a complete reply.
         retries: Resends after the first attempt before giving up.
         silence: Seconds of quiet line required before a resend.
+        clock: Returns the current time in seconds; deadlines and quiet times are measured with
+            it. Defaults to :func:`time.monotonic`; a simulation passes simulated time.
     """
 
     def __init__(self, transport: Transport, timeout: float = DEFAULT_TIMEOUT,
-                 retries: int = RETRIES, silence: float = SILENCE):
+                 retries: int = RETRIES, silence: float = SILENCE,
+                 clock: Callable[[], float] = time.monotonic):
         self.transport = transport
+        self.clock = clock
         self.timeout = timeout
         self.retries = retries
         self.silence_time = silence
@@ -180,7 +186,7 @@ class Link:
                 self.wait_for_silence()
             self.transport.write(packet)
             try:
-                reply = self._read_reply(seq, time.monotonic() + wait)
+                reply = self._read_reply(seq, self.clock() + wait)
             except TimeoutError:
                 self.stats.timeouts += 1
                 problem = "no reply"
@@ -222,7 +228,7 @@ class Link:
         """
         wait = self.timeout if timeout is None else timeout
         try:
-            return self._read_reply(seq, time.monotonic() + wait)
+            return self._read_reply(seq, self.clock() + wait)
         except _BadReply as e:
             raise ValueError(str(e)) from None
 
@@ -234,13 +240,13 @@ class Link:
             limit: Give up waiting after this many seconds in total.
         """
         quiet = self.silence_time if quiet is None else quiet
-        end = time.monotonic() + limit
-        last = time.monotonic()
-        while time.monotonic() < end:
+        end = self.clock() + limit
+        last = self.clock()
+        while self.clock() < end:
             self.transport.timeout = max(quiet / 4, 0.001)
             if self.transport.read(4096):
-                last = time.monotonic()
-            elif time.monotonic() - last >= quiet:
+                last = self.clock()
+            elif self.clock() - last >= quiet:
                 return
 
     # ---------------------------------------------------------------------------------------------
@@ -250,7 +256,7 @@ class Link:
     def _read_exact(self, n: int, deadline: float) -> bytes:
         buf = bytearray()
         while len(buf) < n:
-            remaining = deadline - time.monotonic()
+            remaining = deadline - self.clock()
             if remaining <= 0:
                 raise TimeoutError
             self.transport.timeout = min(remaining, 0.05)
