@@ -102,9 +102,10 @@ def sim_seconds() -> float:
 
 def make_device(dut) -> tuple[Device, SimSerial]:
     port = SimSerial(dut)
-    # Timeouts in simulated seconds, scaled to the bit rate: replies of up to ~1 KB (the tests'
-    # largest), quiet time longer than the board's inter-byte timeout.
-    link = Link(port, timeout=1000 * BYTE_S, silence=2 * TIMEOUT_CYCLES * PERIOD_NS * 1e-9, clock=sim_seconds)
+    # Timeouts in simulated seconds, scaled to the bit rate: room for the protocol's largest reply
+    # (4096-byte payload + 7 framing bytes; the self-test's WBUF read is 1.5 KB at N = 8), and a
+    # quiet time longer than the board's inter-byte timeout.
+    link = Link(port, timeout=5000 * BYTE_S, silence=2 * TIMEOUT_CYCLES * PERIOD_NS * 1e-9, clock=sim_seconds)
     return Device(link, run_timeout=20000 * BYTE_S), port
 
 
