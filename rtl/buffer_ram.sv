@@ -136,7 +136,9 @@ module buffer_ram #(
   end
 
   assign rd_valid = v[LAT-1];
-  assign rd_tag   = tg[LAT-1];
+  // Gated by the (reset) valid bit: after a reset, stale tags in the delay line never come out,
+  // because rd_tag drives load / valid inputs of the array directly.
+  assign rd_tag   = v[LAT-1] ? tg[LAT-1] : '0;
 
 `ifdef ASSERTIONS
   /* verilator lint_off PROCASSINIT */

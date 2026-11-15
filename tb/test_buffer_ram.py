@@ -216,7 +216,7 @@ async def reset_drops_reads_in_flight(dut):
     await b.host_fill()
     # LAT reads, the last one in the same cycle as reset: none of them may come out.
     for addr in range(LAT):
-        await b.cycle_(False, rd=addr)
+        await b.cycle_(False, rd=addr, tag=(1 << TAG_W) - 1)   # non-zero tags: none may come out
     dut.rst.value = 1
     b.pending.clear()
     await FallingEdge(dut.clk)
