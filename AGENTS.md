@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), the decoder (`instr_decode`), range checker (`range_check`) and sequencer (`sequencer`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), the decoder (`instr_decode`), range checker (`range_check`), sequencer (`sequencer`), execution units (`matmul_ctrl`, `requant_ctrl`), the core without the host link (`tpu_core`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -243,6 +243,34 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
         - Don't use `(* anyseq *)` with yosys-slang. The attribute is ignored, and Yosys then folds the undriven X into each FSM bit independently, producing impossible transitions.
       - **cocotb (`tb/test_sequencer.py`):** environment models with IMEM latency 1 and 3. Every run's executed-instruction trace and final status must equal `tinytpu.model.Machine`'s, covering every error code, ABORT at every cycle of a program, and reset.
       - **Vivado OOC:** `sequencer` (with decoder and range check) has 0 DSPs, 362 LUTs, about 400 FFs, and +3.3 ns post-synthesis slack. The worst path is decode → halt-code load.
+    - **Implemented (A4.2, parts 2–4):**
+      - **`matmul_ctrl`** (MATMUL address generator):
+        - Loop order n, k, m. Tile period `T = max(3, N + M − 1)`: rows at c = 0…N−1, vectors at c = D…D+M−1 (D = WBUF − ABUF latency = 1). This is the array's exact rule plus `acc_unit`'s 3-cycle spacing, which binds only at N = 2.
+        - Addresses are incremental, with no multipliers.
+        - Each vector pushes {ACC row, mode} into a `sync_fifo` (depth 4N); each array result pops it, so `acc_unit` is driven at whatever the array latency is.
+        - Bias mode: drain, read the N PTAB biases (tag = column), then start the column tile; the biases arrive long before the first result (checked: P_LAT ≤ W_LAT + 2N).
+        - `done` waits until ACC is written. ABORT stops issuing and drains.
+      - **`requant_ctrl`:**
+        - Loop order n, m, col, one value per cycle.
+        - Each cycle it reads the ACC row and the column's PTAB entry, tagged {ABUF vector, col}. The selected ACC value is delayed to meet the PTAB data, then goes through `requant`.
+        - Each result byte is written into its ABUF lane (byte write enable), so no packer is needed.
+      - **`tpu_core`:** sequencer + both units + IMEM (`buffer_ram` with `LUTRAM = 1`) + WBUF / ABUF / PTAB + array + `acc_unit`, behind one host port (`host_mem`, `host_addr` = physical row, right-aligned data, fixed per-memory read latency), allowed only while stopped (asserted).
+        - PTAB is shared by both units. Its read tag carries the owner, so a MATMUL bias read can never reach the requantizer.
+      - **Formal (`formal/matmul_ctrl.sby`):**
+        - `prove` / `prove_n4` (k-induction, N = 2 and 4): array timing at the array's inputs, tile period, and nothing issued from the cycle of an ABORT request.
+          - PDR did not converge in 15 minutes. Harness invariants tying the unit's counters to the work in flight make k-induction pass in seconds.
+          - Use hierarchical references (`dut.c`) for such invariants; yosys-slang accepts them.
+        - `bmc` (from reset, depth 72): exact read and result counts, per-tile bias values, and `done` / ABORT cycle bounds. These relate counters to products of the counts, which induction and PDR can't capture.
+      - **cocotb:**
+        - `test_matmul_ctrl.py` / `test_requant_ctrl.py`: each unit on the real datapath, every ACC / ABUF word compared with `Machine`.
+        - `test_tpu_core.py`, end to end:
+          - a two-layer network with sizes that aren't multiples of N, also checked against the plain math
+          - the exact `docs/isa.md` program at N = 8
+          - random programs, including error halts, where memories also match
+          - ABORT followed by a normal run
+      - **Vivado OOC at N = 8, memory-map depths:**
+        - `matmul_ctrl`: 0 DSPs, 257 LUTs, +3.9 ns. `requant_ctrl`: 2 DSPs, 508 LUTs, +3.9 ns.
+        - **`tpu_core`:** exactly 66 DSPs (57 cascade links) and 39 BRAM tiles, 2,495 LUTs (12%), 2,668 FFs (6.4%), +2.97 ns post-synthesis slack. This is the first measurement of the whole core.
   - The single source of truth is `docs/isa.md`. It has full semantics, the error codes (1–6, confirmed in J1.3), and a worked example program. The summary below must stay consistent with it.
   - Don't change opcodes or encodings without asking.
   - The matmul instruction carries an `act_signed` mode field (see §2).

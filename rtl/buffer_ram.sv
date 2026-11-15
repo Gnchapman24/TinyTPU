@@ -13,6 +13,9 @@
  *  array's load/valid inputs directly. The read path itself is the feeder: no FIFO is needed
  *  (AGENTS.md §3).
  *
+ *  LUTRAM = 1 builds the memory from LUT RAM instead of block RAM (IMEM, memory map); the read
+ *  path and latency are the same.
+ *
  *  Writes are split into LANES equal lanes with their own enables (`dp_wr_be`), so REQUANT can
  *  write one byte of an activation vector per cycle (ABUF: LANES = N). Host writes write all
  *  lanes. Reading a row in the same cycle it is written is not allowed (asserted): the BRAM's
@@ -25,7 +28,8 @@ module buffer_ram #(
   parameter int DEPTH   = 1024,  // rows; a power of two, at least 2
   parameter int LANES   = 1,     // write-enable lanes per row; WIDTH must be a multiple of LANES
   parameter int RD_PIPE = 0,     // extra read pipeline stages after the BRAM output register
-  parameter int TAG_W   = 1      // width of the side-band tag of a datapath read
+  parameter int TAG_W   = 1,     // width of the side-band tag of a datapath read
+  parameter bit LUTRAM  = 1'b0   // 1: build from LUT RAM (Vivado ram_style "distributed"), e.g. IMEM
 ) (
   input  logic                     clk,           // clock
   input  logic                     rst,           // synchronous active-high reset; empties the read pipeline (not the memory)
@@ -79,17 +83,28 @@ module buffer_ram #(
   // ---------------------------------------------------------------------------------------------
   // RAM (Vivado simple dual-port template with byte-wide write enables).
   // ---------------------------------------------------------------------------------------------
-  logic [WIDTH-1:0] mem [DEPTH];
   logic [WIDTH-1:0] rq;
 
-  always_ff @(posedge clk) begin
-    for (int l = 0; l < LANES; l++) begin
-      if (we && wbe[l]) mem[wa][l*LW +: LW] <= wd[l*LW +: LW];
+  if (LUTRAM) begin : g_lutram
+    (* ram_style = "distributed" *) logic [WIDTH-1:0] mem [DEPTH];
+    always_ff @(posedge clk) begin
+      for (int l = 0; l < LANES; l++) begin
+        if (we && wbe[l]) mem[wa][l*LW +: LW] <= wd[l*LW +: LW];
+      end
     end
-  end
-
-  always_ff @(posedge clk) begin
-    if (re) rq <= mem[ra];
+    always_ff @(posedge clk) begin
+      if (re) rq <= mem[ra];
+    end
+  end else begin : g_bram
+    logic [WIDTH-1:0] mem [DEPTH];
+    always_ff @(posedge clk) begin
+      for (int l = 0; l < LANES; l++) begin
+        if (we && wbe[l]) mem[wa][l*LW +: LW] <= wd[l*LW +: LW];
+      end
+    end
+    always_ff @(posedge clk) begin
+      if (re) rq <= mem[ra];
+    end
   end
 
   // ---------------------------------------------------------------------------------------------

@@ -29,6 +29,9 @@ set sources(systolic_array) {pe systolic_array}
 set sources(acc_unit)       {isa_pkg acc_unit}
 set sources(requant)        {requant}
 set sources(sequencer)      {isa_pkg instr_decode range_check sequencer}
+set sources(matmul_ctrl)    {isa_pkg sync_fifo matmul_ctrl}
+set sources(requant_ctrl)   {isa_pkg requant requant_ctrl}
+set sources(tpu_core)       {isa_pkg sync_fifo buffer_ram pe systolic_array acc_unit requant instr_decode range_check sequencer matmul_ctrl requant_ctrl tpu_core}
 set sources(wbuf)           {buffer_ram}
 set sources(abuf)           {buffer_ram}
 set sources(ptab)           {buffer_ram}
@@ -66,6 +69,13 @@ set expect(requant) {DSP 2 CASCADE 1 BRAM 0 MREG 1 PREG 1}
 #   sequencer (with instr_decode and range_check): control only. The range check's products are
 #       shift-and-add, so no DSP may appear (the DSP budget is exactly 66).
 set expect(sequencer) {DSP 0 BRAM 0 SLACK_MET 1}
+#   matmul_ctrl (N = 8): the tile-loop address generator; incremental adders only, no DSP.
+set expect(matmul_ctrl) {DSP 0 BRAM 0 SLACK_MET 1}
+#   requant_ctrl: the requantizer's 2 DSPs and nothing else.
+set expect(requant_ctrl) {DSP 2 BRAM 0 SLACK_MET 1}
+#   tpu_core (N = 8, memory map depths): the whole core without the host link. DSP exactly 66
+#       (64 PEs + 2 requantizer), BRAM exactly 39 (WBUF 32, ABUF 2, ACC 4, PTAB 1; IMEM is LUT RAM).
+set expect(tpu_core) {DSP 66 BRAM 39 SLACK_MET 1}
 set expect(wbuf) {DSP 0 BRAM 32 SLACK_MET 1}
 set expect(abuf) {DSP 0 BRAM 2 SLACK_MET 1}
 set expect(ptab) {DSP 0 BRAM 1 SLACK_MET 1}
