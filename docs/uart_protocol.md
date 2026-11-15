@@ -64,14 +64,22 @@ Addresses and counts are in units, never bytes. Each memory's depth is reported 
 | `0x08` | `INFER` | `in_addr` u16, `start_pc` u16, `out_mem` u8, `0` u8, `out_addr` u16, `out_count` u16, then input bytes | Status block, then `out_count × unit` bytes of output |
 
 **`LEN` must match exactly:**
+- `INFO`, `STATUS`, `ABORT`, `RESET`: 0
+- `RUN`: 2; `READ`: 6
 - `WRITE`: 6 + `count × unit`
 - `INFER`: 10 + input bytes, which must be a whole number of `ABUF` vectors, written from `in_addr` upward
 
 Anything else gets NAK `0x03`.
 
-**`ABORT`** stops the sequencer at once. Datapath work already issued drains for a few cycles, and then the state is idle, the error 0, and the PC that of the instruction that was running, which may be partly executed. Sent while nothing runs, it changes nothing. How a pending `RUN`/`INFER` reply interacts with `ABORT` is defined with the packet engine (A4.1).
+**Reply size:** a `READ` whose reply (`count × unit`) or an `INFER` whose reply (8 + `out_count × unit`) would exceed 4096 bytes gets NAK `0x05`; for `INFER`, nothing is written or run.
 
-**While a program is running,** only `INFO`, `STATUS` and `ABORT` are accepted. Every other command gets NAK `0x06` (busy). `RUN` and `INFER` reply only once the program halts, and the receiver keeps listening meanwhile, so `ABORT` can still be sent.
+**`ABORT`** stops the sequencer at once. Datapath work already issued drains for a few cycles, and then the state is idle, the error 0, and the PC that of the instruction that was running, which may be partly executed. Sent while nothing runs, it changes nothing.
+
+**While a program is running,** only `INFO`, `STATUS`, `ABORT` and `RESET` are accepted. Every other command gets NAK `0x06` (busy). `RUN` and `INFER` reply only once the program halts, and the receiver keeps listening meanwhile, so `ABORT` or `RESET` can still be sent.
+
+**A pending `RUN`/`INFER` reply and `ABORT` or `RESET`:** the `ABORT` (or `RESET`) reply replaces it. The `RUN`/`INFER` gets no reply of its own; the host treats the `ABORT`/`RESET` reply's status block as the answer to it. Every request therefore gets at most one reply. `STATUS` and `INFO` while a program runs get their own reply, and the `RUN`/`INFER` reply still follows when the program halts.
+
+**`RESET`** returns the sequencer to idle at once (like the `btnC` button), keeps every memory, drops any pending `RUN`/`INFER` reply, forgets the last `SEQ` (see [Duplicate requests](#duplicate-requests-seq)), and replies with the status block (state idle).
 
 `INFER` replies with the status block even if the program halted with an error. In that case its output bytes are whatever the output region holds.
 
@@ -108,12 +116,14 @@ Anything else gets NAK `0x03`.
 | `0x02` | unknown command | none |
 | `0x03` | bad length | none |
 | `0x04` | payload too long (`LEN` > 4096) | none |
-| `0x05` | bad argument: unknown memory, `addr + count` beyond depth, count 0, or a non-zero reserved byte | none |
+| `0x05` | bad argument: unknown memory, `addr + count` beyond depth, count 0, a reply over 4096 bytes, a `start_pc` beyond `IMEM`, or a non-zero reserved byte or bit | none (except a `PTAB` payload, see [Write-through](#write-through)) |
 | `0x06` | busy | none |
 
 A request that times out partway through gets **no reply** (see [Timeouts](#timeouts-and-recovery)).
 
 Reply codes describe the **packet**. Errors from the **program** (ISA error codes 1–6) are reported in the status block's error field, inside an ACK.
+
+**When several apply, the first in this order is sent:** bad CRC (`0x01`), unknown command (`0x02`), payload too long (`0x04`), bad length (`0x03`), then the [duplicate rule](#duplicate-requests-seq), then busy (`0x06`), then bad argument (`0x05`).
 
 ## Robustness rules
 
@@ -124,16 +134,17 @@ Reply codes describe the **packet**. Errors from the **program** (ISA error code
 - The CRC is checked after the last byte. If it fails, the FPGA replies NAK `0x01`, and the written range may hold bad data. The host must resend; `WRITE` is safe to repeat.
 - **Nothing executes before its CRC passes.** `RUN` and `INFER` start the sequencer only after a good CRC.
 - Arguments are checked from the header and fixed fields **before** any payload byte is written. A bad argument writes nothing: the remaining payload is read and discarded, and the FPGA replies NAK `0x05`.
+- **One exception, `PTAB` reserved bits:** bits 7:6 of an entry's shift byte and its pad byte can only be checked when that entry arrives. An entry with a non-zero reserved bit is not written, the rest of the payload is still processed, and the reply is NAK `0x05`. Entries before it may already have been written, as with a bad CRC.
 
 ### Duplicate requests (`SEQ`)
 
-The FPGA remembers the `SEQ` of the last request it executed. If the next request is identical in `CMD` and `SEQ`, and its CRC is good, the FPGA **does not execute it again**. It rebuilds the reply instead:
+The FPGA remembers the `CMD` and `SEQ` of the last `WRITE`, `RUN`, `INFER` or `ABORT` it executed (requests without side effects, `READ`, `INFO` and `STATUS`, do not change it, so polling `STATUS` while a program runs does not hide a resent `RUN`). If a request is identical in `CMD` and `SEQ`, and its CRC is good, the FPGA **does not execute it again**. It rebuilds the reply instead:
 
 | Command | Reply to a duplicate |
 |---|---|
 | `WRITE` | ACK; the data is **not** rewritten |
-| `RUN` | current status block |
-| `INFER` | current status block + output re-read from memory |
+| `RUN` | while its program still runs: no immediate reply; the normal reply is sent when the program halts (exactly as for the original). Otherwise: current status block |
+| `INFER` | as `RUN`; the reply is the status block + output read from memory |
 | `READ`, `INFO`, `STATUS` | executed normally; they have no side effects |
 | `ABORT`, `RESET` | executed normally; they are idempotent |
 

@@ -216,7 +216,14 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
         - `STATUS`, `ABORT`, `RESET`: `RESET` returns to idle and keeps memory; `btnC` does the same.
         - **`ABORT` is decided (A4.2):** it stops issuing work at once, lets issued datapath work drain, then goes idle with error 0 and PC = the instruction that was running. No new error code.
         - `INFER`: writes the input, runs, and replies with status plus output data, in one round trip. It can be built after the other commands work.
-        - **While running:** only `STATUS`, `ABORT`, and `INFO` are accepted. Anything else gets a NAK with a busy code. The host never accesses a memory while the sequencer runs.
+        - **While running:** only `STATUS`, `ABORT`, `INFO` and `RESET` are accepted (decided in A4.1: RESET too, as the ISA table said). Anything else gets a NAK with a busy code. The host never accesses a memory while the sequencer runs.
+        - **Decided in A4.1** (full rules in `docs/uart_protocol.md`):
+          - An ABORT or RESET reply replaces a pending RUN/INFER reply, so every request gets at most one reply.
+          - A READ/INFER reply over 4096 bytes is NAK 0x05.
+          - A PTAB entry with non-zero reserved bits is skipped and the reply is NAK 0x05; earlier entries may already be written.
+          - A duplicate RUN/INFER whose program still runs re-arms the pending reply.
+          - NAK priority: CRC, unknown, too long, length, duplicate rule, busy, argument.
+          - Only WRITE/RUN/INFER/ABORT update the remembered SEQ.
       - **Error halts** record an error code and the faulting PC, for any of:
         - illegal opcode, non-zero reserved bit, acc_mode 11, or a count of 0
         - any generated address at or beyond its buffer's depth

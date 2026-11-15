@@ -182,7 +182,7 @@ Host commands are not instructions. They are handled by the protocol engine arou
 | `RUN` | Starts the sequencer at a PC. **The reply is sent when the program halts**, with the final status | no |
 | `STATUS` | Returns state (idle / running / halted OK / halted error), PC, halt code, error code | yes |
 | `ABORT` | Stops a running program at once and returns its status: state idle, error 0, PC of the instruction that was running. That instruction may be partly executed. When nothing is running, it changes nothing | yes |
-| `RESET` | Returns the sequencer and protocol state to idle; memory contents are kept. The `btnC` button does the same | yes |
+| `RESET` | Returns the sequencer and protocol state to idle; memory contents are kept; a pending `RUN`/`INFER` reply is dropped. The `btnC` button does the same | yes |
 | `INFER` | Writes input data to `ABUF`, runs from a PC, then replies with status plus `count` units read from a memory: a full inference in one round trip | no |
 
 ## Example: a 196 → 64 → 10 network
