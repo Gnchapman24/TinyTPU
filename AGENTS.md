@@ -183,6 +183,13 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
     - **End-to-end test (A5.1, `tb/test_tinytpu_top.py`):** board pins only. The host side is the real `Device` + `Link`, run as blocking code in a `cocotb.task.bridge` thread, on `SimSerial` (`tb/uart_bfm.py` models, `cocotb.task.resume`) with the simulation time as the link's clock.
       - Covers INFO, a two-layer network in both activation modes with sizes that aren't multiples of N (RUN and INFER, against the plain matmul / requant math), random matrices against `tinytpu.model`, RESET while running, and link recovery through the real engine (a corrupted request, lost WRITE and RUN replies; the resent RUN must not run twice).
       - Runs at `CLKS_PER_BIT` 8 (everything) and 100 (INFO and one network).
+    - **Board tools (A6.2):** user guide `docs/host.md`.
+      - **`python -m tinytpu.selftest`:**
+        - checks: info, memories, matmul, network (RUN and INFER), errors (ISA errors 1 / 5 / 6, a NAK), speed
+        - everything compared with `tinytpu.model`; shapes fit any reported depths
+        - `--probe` finds the UART port with INFO, and recognises the bring-up design
+      - **`python -m tinytpu.example`:** a commented matmul on the board, checked against NumPy.
+      - **Tested in simulation:** both run against the simulated board in `tb/test_tinytpu_top.py`. The selftest must pass, and must report a wrong result as FAIL. Probe and CLI are tested in `tb/test_selftest.py` with fake ports.
     - **Port discovery:** Windows can show **two** COM ports for the Basys3's FT2232H (JTAG and UART channels) with identical USB details, and other FT2232H boards match too.
       - Never pick one by position. Use `--port`, or `python -m tinytpu.bringup --probe`, which sends one ECHO to each and reports which answers.
       - Seen on the dev machine: COM6 and COM7, both `0403:6010`, serial "8".
@@ -327,7 +334,8 @@ tb/           cocotb testbenches (test_*.py) + Python reference models; tb/hdl/ 
               tb/uart_bfm.py (UartSource/UartSink serial-line models for end-to-end tests)
 host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, crc.py, packet.py,
               link.py (serial link with resend rules), device.py (host API: every command),
-              bringup.py (board test CLI),
+              bringup.py (loopback board test CLI), selftest.py (full-design board
+              self-test CLI), example.py (example matmul script),
               model.py (bit-exact reference model), later compiler
 formal/       SymbiYosys .sby files and property wrappers
 syn/          Vivado: basys3.xdc, build.tcl (batch build of a top), program.tcl (JTAG),

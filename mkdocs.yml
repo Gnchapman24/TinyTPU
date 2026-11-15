@@ -17,6 +17,7 @@ nav:
   - UART protocol: uart_protocol.md
   - Memory map: memory_map.md
   - Board bring-up: bringup.md
+  - Using the board: host.md
   - RTL modules: rtl/index.md
   - Python API:
       - tinytpu.isa: api/isa.md
@@ -26,6 +27,7 @@ nav:
       - tinytpu.link: api/link.md
       - tinytpu.device: api/device.md
       - tinytpu.bringup: api/bringup.md
+      - tinytpu.selftest, example: api/selftest.md
 
 # Python API pages use `::: module.path` blocks (Google-style docstrings).
 plugins:

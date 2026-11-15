@@ -91,5 +91,5 @@ It runs seven checks and prints `PASS`/`FAIL` for each, then a summary of link s
 ## Limits of this design
 
 - Payloads above 256 bytes are rejected with NAK `0x04`. The final protocol allows 4096.
-- Only `ECHO` is implemented. The real command engine is task A4.1.
+- Only `ECHO` is implemented. The full design (`tinytpu_top`, with every command) and its self-test are in [Using the board from a PC](host.md).
 - Bytes sent while a reply is in progress are dropped (`led[7]`): the host must wait for each reply, as the protocol requires.
