@@ -1,0 +1,46 @@
+# matmul_ctrl formal checks (task A4.2), N = 2, any legal in-range MATMUL with counts 1..2,
+# including the real sync_fifo result queue. See matmul_ctrl_formal.sv for the properties.
+#   prove, prove_n4: for all time (k-induction, N = 2 and N = 4): array timing at its inputs,
+#          tile period, nothing after ABORT. Invariants in the harness tie the unit's counters to
+#          the work in flight, which makes the induction step go through (PDR did not converge).
+#   bmc:   from reset (PROP_BMC): exact read and result counts, per-tile biases, done and ABORT
+#          cycle bounds. Depth 72 covers the largest instruction (under 60 cycles) from start to
+#          done, and an ABORT's drain.
+
+[tasks]
+prove
+prove_n4
+bmc
+cover
+
+[options]
+prove: mode prove
+prove: depth 24
+prove_n4: mode prove
+prove_n4: depth 32
+bmc: mode bmc
+bmc: depth 72
+cover: mode cover
+cover: depth 80
+
+[engines]
+prove: smtbmc
+prove_n4: smtbmc
+bmc: smtbmc
+cover: smtbmc
+
+[script]
+plugin -i slang
+prove: read_slang -DFORMAL -DASSERTIONS isa_pkg.sv sync_fifo.sv matmul_ctrl.sv matmul_ctrl_formal.sv --top matmul_ctrl_formal
+prove_n4: read_slang -DFORMAL -DASSERTIONS -G N=4 isa_pkg.sv sync_fifo.sv matmul_ctrl.sv matmul_ctrl_formal.sv --top matmul_ctrl_formal
+bmc: read_slang -DFORMAL -DASSERTIONS -DPROP_BMC isa_pkg.sv sync_fifo.sv matmul_ctrl.sv matmul_ctrl_formal.sv --top matmul_ctrl_formal
+cover: read_slang -DFORMAL -DASSERTIONS isa_pkg.sv sync_fifo.sv matmul_ctrl.sv matmul_ctrl_formal.sv --top matmul_ctrl_formal
+prep -top matmul_ctrl_formal
+memory_map
+opt -fast
+
+[files]
+../rtl/isa_pkg.sv
+../rtl/sync_fifo.sv
+../rtl/matmul_ctrl.sv
+matmul_ctrl_formal.sv
