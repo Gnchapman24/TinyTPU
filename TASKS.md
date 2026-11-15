@@ -74,7 +74,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 
 | ID | Owner | Task | Depends on |
 |---|---|---|---|
-| [ ] A5.1 | Agent | Top-level `tinytpu_top` + end-to-end cocotb test through a UART driver model (random matrices, both activation modes, non-multiple-of-N sizes). | Phases 2–4 |
+| [x] A5.1 | Agent | Top-level `tinytpu_top` + end-to-end cocotb test through a UART driver model (random matrices, both activation modes, non-multiple-of-N sizes). Done, plus the host API `tinytpu.device` and an injectable clock in `tinytpu.link`, so the test runs the real host code. | Phases 2–4 |
 | [ ] A5.2 | Agent | Tier 3 TCL: out-of-context synthesis, utilization/timing/power reports to JSON, ceiling check, baseline compare script. | A0.6 |
 | [ ] J5.3 | Joint | First full synthesis. Agent creates `syn/baseline.json`; human reviews and approves it. | A5.1, A5.2 |
 | [ ] A5.4 | Agent | Full implementation: build the bitstream; meet slack ≥ 0 at 100 MHz. | A5.1 |

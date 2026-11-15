@@ -17,6 +17,7 @@ set part xc7a35tcpg236-1
 
 # RTL files per top level, in compile order (packages first).
 set sources(loopback_top) {reset_gen uart_rx uart_tx sync_fifo crc16_ccitt loopback_echo loopback_top}
+set sources(tinytpu_top) {isa_pkg reset_gen uart_rx uart_tx sync_fifo crc16_ccitt buffer_ram pe systolic_array acc_unit requant instr_decode range_check sequencer matmul_ctrl requant_ctrl tpu_core cmd_engine tinytpu_top}
 
 if {![info exists sources($top)]} {
   error "unknown top '$top'; known: [array names sources]"

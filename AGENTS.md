@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), the decoder (`instr_decode`), range checker (`range_check`), sequencer (`sequencer`), execution units (`matmul_ctrl`, `requant_ctrl`), the core without the host link (`tpu_core`), the packet engine (`cmd_engine`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), the decoder (`instr_decode`), range checker (`range_check`), sequencer (`sequencer`), execution units (`matmul_ctrl`, `requant_ctrl`), the core without the host link (`tpu_core`), the packet engine (`cmd_engine`), the board top level (`tinytpu_top`), the host API (`tinytpu.device`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -168,6 +168,18 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
       - **Found while testing A4.1:** `buffer_ram`'s `rd_tag` was not gated after a reset. Stale tags in the delay line drove the array's `a_valid` after a RESET in mid-MATMUL. `rd_tag` is now gated by the reset valid bit.
     - **Host link (A2.5):** `tinytpu.link.Link` implements the protocol's host rules: one request in flight, single `write()` per packet, resend with the **same** SEQ after a timeout, bad reply, or NAK BAD_CRC, 10 ms silence before each resend, and `RESET` + `LinkError` after 3 resends. Other NAKs are returned, not resent.
       - It is tested against `tb/fake_echo.py`, a Python model of the bring-up board with fault injection.
+      - **Injectable clock (A5.1):** `Link(..., clock=...)` measures every deadline and quiet time with `clock()`; the default is `time.monotonic`. The end-to-end simulation passes the simulation time, so the real resend rules run there unchanged.
+    - **Host API (A5.1, `tinytpu.device.Device`):** every command as a method, on a `Link`.
+      - `write` / `read` take each memory's unit and split transfers into packets automatically.
+      - Helpers load programs, weight tiles, vectors and per-channel parameters in canonical layouts, and read vectors and ACC rows back.
+      - A NAK raises `DeviceError`.
+    - **Board top level (A5.1, `rtl/tinytpu_top.sv`):** `reset_gen` → `uart_rx` → `cmd_engine` ↔ `tpu_core` → `uart_tx`. The engine's RESET also resets the core.
+      - LEDs: heartbeat; RX / TX activity; running / halted OK / halted error; sticky NAK / timeout / framing / overflow; the ISA error code on led[15:12].
+      - Builds with `syn/build.tcl` (A5.4).
+      - **Vivado OOC at N = 8, memory-map depths:** 3,904 LUTs (19%), 3,906 FFs (9.4%), DSP 66, BRAM 39, +1.5 ns post-synthesis. `syn/ooc.tcl` checks the ceilings (new `ceiling` table).
+    - **End-to-end test (A5.1, `tb/test_tinytpu_top.py`):** board pins only. The host side is the real `Device` + `Link`, run as blocking code in a `cocotb.task.bridge` thread, on `SimSerial` (`tb/uart_bfm.py` models, `cocotb.task.resume`) with the simulation time as the link's clock.
+      - Covers INFO, a two-layer network in both activation modes with sizes that aren't multiples of N (RUN and INFER, against the plain matmul / requant math), random matrices against `tinytpu.model`, RESET while running, and link recovery through the real engine (a corrupted request, lost WRITE and RUN replies; the resent RUN must not run twice).
+      - Runs at `CLKS_PER_BIT` 8 (everything) and 100 (INFO and one network).
     - **Port discovery:** Windows can show **two** COM ports for the Basys3's FT2232H (JTAG and UART channels) with identical USB details, and other FT2232H boards match too.
       - Never pick one by position. Use `--port`, or `python -m tinytpu.bringup --probe`, which sends one ECHO to each and reports which answers.
       - Seen on the dev machine: COM6 and COM7, both `0403:6010`, serial "8".
@@ -311,7 +323,8 @@ rtl/          SystemVerilog sources (one module per file, file name = module nam
 tb/           cocotb testbenches (test_*.py) + Python reference models; tb/hdl/ test-only HDL wrappers;
               tb/uart_bfm.py (UartSource/UartSink serial-line models for end-to-end tests)
 host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, crc.py, packet.py,
-              link.py (serial link with resend rules), bringup.py (board test CLI),
+              link.py (serial link with resend rules), device.py (host API: every command),
+              bringup.py (board test CLI),
               model.py (bit-exact reference model), later compiler
 formal/       SymbiYosys .sby files and property wrappers
 syn/          Vivado: basys3.xdc, build.tcl (batch build of a top), program.tcl (JTAG),

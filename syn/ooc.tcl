@@ -32,6 +32,7 @@ set sources(sequencer)      {isa_pkg instr_decode range_check sequencer}
 set sources(matmul_ctrl)    {isa_pkg sync_fifo matmul_ctrl}
 set sources(requant_ctrl)   {isa_pkg requant requant_ctrl}
 set sources(cmd_engine)     {isa_pkg sync_fifo crc16_ccitt cmd_engine}
+set sources(tinytpu_top)    {isa_pkg reset_gen uart_rx uart_tx sync_fifo crc16_ccitt buffer_ram pe systolic_array acc_unit requant instr_decode range_check sequencer matmul_ctrl requant_ctrl tpu_core cmd_engine tinytpu_top}
 set sources(tpu_core)       {isa_pkg sync_fifo buffer_ram pe systolic_array acc_unit requant instr_decode range_check sequencer matmul_ctrl requant_ctrl tpu_core}
 set sources(wbuf)           {buffer_ram}
 set sources(abuf)           {buffer_ram}
@@ -77,6 +78,11 @@ set expect(requant_ctrl) {DSP 2 BRAM 0 SLACK_MET 1}
 #   tpu_core (N = 8, memory map depths): the whole core without the host link. DSP exactly 66
 #       (64 PEs + 2 requantizer), BRAM exactly 39 (WBUF 32, ABUF 2, ACC 4, PTAB 1; IMEM is LUT RAM).
 set expect(tpu_core) {DSP 66 BRAM 39 SLACK_MET 1}
+#   tinytpu_top (N = 8, memory map depths): the whole design, against the AGENTS.md ceilings
+#       (LUT <= 5200, FF <= 6240, DSP exactly 66, BRAM 39 of at most 40). The ceilings are checked
+#       below with LUT_MAX / FF_MAX; the full build with timing is syn/build.tcl.
+set expect(tinytpu_top) {DSP 66 BRAM 39 SLACK_MET 1}
+set ceiling(tinytpu_top) {LUT 5200 FF 6240}
 #   cmd_engine (N = 8, memory map depths): the packet engine; control and byte shuffling only.
 set expect(cmd_engine) {DSP 0 BRAM 0 SLACK_MET 1}
 set expect(wbuf) {DSP 0 BRAM 32 SLACK_MET 1}
@@ -168,6 +174,13 @@ if {[info exists expect($top)]} {
   foreach {k v} $expect($top) {
     if {$metrics($k) ne $v} {
       lappend failures "$k = $metrics($k), expected $v"
+    }
+  }
+}
+if {[info exists ceiling($top)]} {
+  foreach {k v} $ceiling($top) {
+    if {$metrics($k) > $v} {
+      lappend failures "$k = $metrics($k), above the ceiling $v"
     }
   }
 }
