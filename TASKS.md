@@ -75,7 +75,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | ID | Owner | Task | Depends on |
 |---|---|---|---|
 | [x] A5.1 | Agent | Top-level `tinytpu_top` + end-to-end cocotb test through a UART driver model (random matrices, both activation modes, non-multiple-of-N sizes). Done, plus the host API `tinytpu.device` and an injectable clock in `tinytpu.link`, so the test runs the real host code. | Phases 2–4 |
-| [ ] A5.2 | Agent | Tier 3 TCL: out-of-context synthesis, utilization/timing/power reports to JSON, ceiling check, baseline compare script. | A0.6 |
+| [x] A5.2 | Agent | Tier 3 TCL: out-of-context synthesis, utilization/timing/power reports to JSON, ceiling check, baseline compare script. Done: `build.tcl` writes `<top>_metrics.json` and checks the ceilings; `python -m tinytpu.baseline` compares with `syn/baseline.json` (run by `vivado.ps1`). | A0.6 |
 | [ ] J5.3 | Joint | First full synthesis. Agent creates `syn/baseline.json`; human reviews and approves it. | A5.1, A5.2 |
 | [x] A5.4 | Agent | Full implementation: build the bitstream; meet slack ≥ 0 at 100 MHz. Done: WNS +1.075 ns, WHS +0.035 ns after routing (host writes registered to get there); LUT 17.8%, FF 10.1%, BRAM 39, DSP 66. | A5.1 |
 | [ ] H5.5 | Human | On-board end-to-end test: host driver runs matmuls and compares with NumPy. Report mismatches. | A5.4, H2.6 |

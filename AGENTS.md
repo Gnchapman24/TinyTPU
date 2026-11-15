@@ -335,12 +335,14 @@ tb/           cocotb testbenches (test_*.py) + Python reference models; tb/hdl/ 
 host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, crc.py, packet.py,
               link.py (serial link with resend rules), device.py (host API: every command),
               bringup.py (loopback board test CLI), selftest.py (full-design board
-              self-test CLI), example.py (example matmul script),
+              self-test CLI), example.py (example matmul script), baseline.py (build
+              metrics vs syn/baseline.json),
               model.py (bit-exact reference model), later compiler
 formal/       SymbiYosys .sby files and property wrappers
-syn/          Vivado: basys3.xdc, build.tcl (batch build of a top), program.tcl (JTAG),
-              ooc.tcl (per-module OOC synthesis + resource expectations), vivado.ps1 (Windows
-              wrapper), later baseline.json
+syn/          Vivado: basys3.xdc, build.tcl (batch build of a top: reports, metrics JSON, ceiling
+              check, bitstream), program.tcl (JTAG), ooc.tcl (per-module OOC synthesis + resource
+              expectations), vivado.ps1 (Windows wrapper; runs the baseline check), baseline.json
+              (after J5.3)
 docs/         MkDocs site (architecture, memory map, ISA, UART protocol) + gen_rtl_docs.py
 tools/        versions.env (pinned tool versions), setup notes
 pyproject.toml, uv.lock   Python 3.12 project and locked dependencies
@@ -442,6 +444,16 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
        - BRAM36 ≤ 80% (40). Expected exactly 39 (J1.4 memory map). It was raised from 50% so weights can stay on-chip; the remaining ~10 blocks are for ILA debug cores.
        - DSP **exactly 66**: 65 means a MAC fell into LUTs; 67 or more means an unexpected DSP was inferred
        - worst setup slack ≥ 0 at 100 MHz
+     - **Implemented (A5.2):**
+       - **`syn/build.tcl`** writes `<top>_metrics.json` after routing:
+         - `lut` (Slice LUTs), `lut_memory` and `ff` (Slice Registers), parsed from `report_utilization`: the device's own counts, which the percentage ceilings refer to. LUT cells before packing (`lut_cells`, informational) are higher, about 4,060 vs 3,700.
+         - `dsp` and `bram` (tiles), counted like `ooc.tcl`
+         - `wns_ns`, `whs_ns`
+         - `power_total_w` and `power_dynamic_w`, parsed from `report_power` (vectorless)
+         - plus `top`, `part` and the Vivado version
+       - For `tinytpu_top` it fails, with no bitstream, on a ceiling breach (LUT > 5,200, FF > 6,240, BRAM > 40, DSP ≠ 66) or negative slack. The metrics file is written first, so a failing build still leaves its numbers behind.
+       - **`python -m tinytpu.baseline <metrics.json>`** applies the regression rules below and prints a table. `--create REASON` writes a baseline, and refuses to replace one without `--force`. It is tested in `tb/test_baseline.py`.
+       - **`syn\vivado.ps1 -Top tinytpu_top`** runs that comparison after the build, once `syn/baseline.json` exists. It skips the comparison, printing the command instead, if `UV_PROJECT_ENVIRONMENT` isn't set: uv must not create a Windows venv in the repo's `.venv`.
      - **Regression check** against the committed `syn/baseline.json`:
        - fail if LUT or FF grows more than 10%, or if the DSP or BRAM count changes at all
        - create the baseline at the first full synthesis; update it only deliberately, in its own reviewed change, with the reason in the commit message
