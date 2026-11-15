@@ -5,7 +5,8 @@
 # or use syn\vivado.ps1, which fills in the paths. <out_dir> must be on a local Windows disk,
 # never inside the repo (AGENTS.md §5a). Run Vivado from <out_dir> so its scratch files land there.
 #
-# Fails (non-zero exit) if timing is not met.
+# Writes the routed checkpoint (<top>_routed.dcp) and reports (utilization, timing summary,
+# the 20 worst setup paths, DRC) to <out_dir>. Fails (non-zero exit) if timing is not met.
 
 if {[llength $argv] != 2} {
   error "usage: -tclargs <top> <out_dir>"
@@ -41,9 +42,11 @@ place_design
 phys_opt_design
 route_design
 
+write_checkpoint -force [file join $out ${top}_routed.dcp]
 report_utilization -file [file join $out ${top}_utilization.rpt]
 report_utilization -hierarchical -file [file join $out ${top}_utilization_hier.rpt]
 report_timing_summary -file [file join $out ${top}_timing.rpt]
+report_timing -setup -max_paths 20 -nworst 1 -unique_pins -file [file join $out ${top}_paths.rpt]
 report_drc -file [file join $out ${top}_drc.rpt]
 
 set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
