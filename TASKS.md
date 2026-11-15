@@ -67,7 +67,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 
 | ID | Owner | Task | Depends on |
 |---|---|---|---|
-| [ ] A4.1 | Agent | Packet parser (length, CRC check, ACK/NAK, timeout) + formal properties. | A2.1–A2.3, J1.3 |
+| [x] A4.1 | Agent | Packet parser (length, CRC check, ACK/NAK, timeout) + formal properties. Done: `cmd_engine` (full protocol on `tpu_core`), formal proof (framing, no reply without a request, timeout, busy rule, no dropped byte); open protocol points decided (ABORT/RESET replace a pending reply, RESET while running, big replies, PTAB reserved bits, duplicate RUN while running). | A2.1–A2.3, J1.3 |
 | [x] A4.2 | Agent | Instruction decoder + control FSMs + formal properties (including: `act_signed` is stable while the array is busy). Done: `instr_decode`, `range_check` (error 5 before execution, decided), `sequencer`, `matmul_ctrl`, `requant_ctrl`, `tpu_core`; formal proofs for the sequencer and the MATMUL address generator; end-to-end tests against the model; ABORT semantics decided. | A1.5 |
 
 ## Phase 5 — Integration and implementation

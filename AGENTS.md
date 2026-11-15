@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), the decoder (`instr_decode`), range checker (`range_check`), sequencer (`sequencer`), execution units (`matmul_ctrl`, `requant_ctrl`), the core without the host link (`tpu_core`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), the decoder (`instr_decode`), range checker (`range_check`), sequencer (`sequencer`), execution units (`matmul_ctrl`, `requant_ctrl`), the core without the host link (`tpu_core`), the packet engine (`cmd_engine`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -145,6 +145,27 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
       - After a framing error, `uart_rx` waits for an idle (high) line before it looks for the next start bit.
       - Tested at `CLKS_PER_BIT` 8 and 100, including ±3% baud error at 100.
     - Host docs tell Windows users to set the FTDI latency timer to 1 ms (Device Manager → Port Settings → Advanced).
+    - **Packet engine (A4.1, `rtl/cmd_engine.sv`):** the whole protocol on top of `tpu_core`'s host port.
+      - **Receive path:** a 32-byte receive queue, then a parser: header → fixed fields → two evaluation cycles (NAK priority; the busy decision is latched) → write-through of WRITE / INFER rows → CRC.
+      - **Memory traffic:** memories are runs of physical rows (WBUF tile = N rows; PTAB entry = 8 wire bytes for 54 bits).
+      - **Replies:** a status or info block plus streamed rows, with the CRC computed as bytes go out.
+      - **RUN / INFER:** they start the core and leave a pending reply, sent when the core stops.
+      - **Duplicates:** a duplicate INFER answers from the remembered region of the original, never from its own payload (found by formal).
+      - **Vivado OOC (N = 8):** 1,620 LUTs, 1,097 FFs, 0 DSPs / BRAM, +2.07 ns post-synthesis. The worst path is the argument checks in the evaluation cycle. With `tpu_core` (2,497 LUTs) that is about 4,100 of the 5,200-LUT ceiling.
+      - **Formal (`formal/cmd_engine.sby`):** any byte stream, with an abstract core.
+        - `prove` (k-induction, about 30 s) holds for all time:
+          - reply framing (sync, code, NAK ⇒ LEN 0, LEN ≤ max, exactly LEN payload bytes)
+          - a reply only for a completed request or a pending RUN / INFER
+          - the inter-byte timeout
+          - memories only while the core is stopped
+          - a byte is dropped only when the queue is full
+        - `bmc` (depth 30) adds the address range and a progress bound.
+        - The harness invariants (TX byte accounting, remembered-state validity) are what make induction work; PDR did not converge.
+        - `formal/crc16_stub.sv` replaces the CRC (XOR checksum, same timing): the real CRC is verified in `tb/test_crc16.py`, and relating CRC chains stalls every solver.
+        - Parser state codes are repeated as numbers in the harness: yosys-slang crashes on hierarchical enum-member references.
+        - For abc engines, techmap then `setundef -anyseq` in the script: variable part-selects leave x bits the AIG writer rejects.
+      - **cocotb (`tb/test_cmd_engine.py`, through `tb/hdl/engine_tb.sv` with the real `tpu_core`):** every command and NAK code, PTAB reserved bits, RUN / INFER against `Machine`, duplicates, STATUS / ABORT / RESET while running, the timeout, noise, and back-to-back bytes.
+      - **Found while testing A4.1:** `buffer_ram`'s `rd_tag` was not gated after a reset. Stale tags in the delay line drove the array's `a_valid` after a RESET in mid-MATMUL. `rd_tag` is now gated by the reset valid bit.
     - **Host link (A2.5):** `tinytpu.link.Link` implements the protocol's host rules: one request in flight, single `write()` per packet, resend with the **same** SEQ after a timeout, bad reply, or NAK BAD_CRC, 10 ms silence before each resend, and `RESET` + `LinkError` after 3 resends. Other NAKs are returned, not resent.
       - It is tested against `tb/fake_echo.py`, a Python model of the bring-up board with fault injection.
     - **Port discovery:** Windows can show **two** COM ports for the Basys3's FT2232H (JTAG and UART channels) with identical USB details, and other FT2232H boards match too.

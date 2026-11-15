@@ -31,6 +31,7 @@ set sources(requant)        {requant}
 set sources(sequencer)      {isa_pkg instr_decode range_check sequencer}
 set sources(matmul_ctrl)    {isa_pkg sync_fifo matmul_ctrl}
 set sources(requant_ctrl)   {isa_pkg requant requant_ctrl}
+set sources(cmd_engine)     {isa_pkg sync_fifo crc16_ccitt cmd_engine}
 set sources(tpu_core)       {isa_pkg sync_fifo buffer_ram pe systolic_array acc_unit requant instr_decode range_check sequencer matmul_ctrl requant_ctrl tpu_core}
 set sources(wbuf)           {buffer_ram}
 set sources(abuf)           {buffer_ram}
@@ -76,6 +77,8 @@ set expect(requant_ctrl) {DSP 2 BRAM 0 SLACK_MET 1}
 #   tpu_core (N = 8, memory map depths): the whole core without the host link. DSP exactly 66
 #       (64 PEs + 2 requantizer), BRAM exactly 39 (WBUF 32, ABUF 2, ACC 4, PTAB 1; IMEM is LUT RAM).
 set expect(tpu_core) {DSP 66 BRAM 39 SLACK_MET 1}
+#   cmd_engine (N = 8, memory map depths): the packet engine; control and byte shuffling only.
+set expect(cmd_engine) {DSP 0 BRAM 0 SLACK_MET 1}
 set expect(wbuf) {DSP 0 BRAM 32 SLACK_MET 1}
 set expect(abuf) {DSP 0 BRAM 2 SLACK_MET 1}
 set expect(ptab) {DSP 0 BRAM 1 SLACK_MET 1}
