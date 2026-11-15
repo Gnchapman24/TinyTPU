@@ -1,0 +1,16 @@
+{
+  "reason": "First full build of tinytpu_top (J5.3): N = 8, memory-map depths, Vivado 2025.2, commit ed95e5c; routed at 100 MHz with WNS +1.075 ns, WHS +0.035 ns.",
+  "top": "tinytpu_top",
+  "part": "xc7a35tcpg236-1",
+  "vivado": "2025.2",
+  "bram": 39,
+  "dsp": 66,
+  "ff": 4185,
+  "lut": 3702,
+  "lut_cells": 4061,
+  "lut_memory": 494,
+  "power_dynamic_w": 0.04,
+  "power_total_w": 0.113,
+  "whs_ns": 0.035,
+  "wns_ns": 1.075
+}

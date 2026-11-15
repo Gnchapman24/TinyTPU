@@ -342,7 +342,7 @@ formal/       SymbiYosys .sby files and property wrappers
 syn/          Vivado: basys3.xdc, build.tcl (batch build of a top: reports, metrics JSON, ceiling
               check, bitstream), program.tcl (JTAG), ooc.tcl (per-module OOC synthesis + resource
               expectations), vivado.ps1 (Windows wrapper; runs the baseline check), baseline.json
-              (after J5.3)
+              (approved in J5.3)
 docs/         MkDocs site (architecture, memory map, ISA, UART protocol) + gen_rtl_docs.py
 tools/        versions.env (pinned tool versions), setup notes
 pyproject.toml, uv.lock   Python 3.12 project and locked dependencies
