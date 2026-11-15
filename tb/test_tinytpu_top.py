@@ -8,8 +8,9 @@ on the board, only at simulated speed. Expected results come from tinytpu.model 
 matmul / requant math and Machine).
 
 Tests: INFO; a two-layer network with sizes that are not multiples of N, in both activation
-modes, uploaded with WRITE, run with RUN and with INFER; random matrices; and the link's
-recovery through the real board (a corrupted request, a lost reply). They run with
+modes, uploaded with WRITE, run with RUN and with INFER; random matrices; the board self-test
+script (tinytpu.selftest) itself; RESET while running; and the link's recovery through the real
+board (a corrupted request, a lost reply). They run with
 CLKS_PER_BIT = 8 for speed, and a shorter set at the real CLKS_PER_BIT = 100.
 """
 
@@ -28,7 +29,7 @@ from cocotb.task import bridge, resume
 from cocotb.triggers import ClockCycles, FallingEdge
 from cocotb_tools.runner import get_runner
 
-from tinytpu import isa, model
+from tinytpu import example, isa, model, selftest
 from tinytpu.device import Device
 from tinytpu.isa import AccMode, Mem, SeqErr, SeqState
 from tinytpu.link import Link
@@ -122,47 +123,11 @@ async def setup(dut) -> None:
 # Host-side scenarios (blocking code, as a user would write it)
 # ------------------------------------------------------------------------------------------------
 
-def network(rng: random.Random, act_signed: bool):
-    """A two-layer MLP with sizes that are not multiples of N: weights, params, program."""
-    k1, h, o = 3 * N + 1, 2 * N + 1, N + 1
-    w1 = np.array([[rng.randint(-127, 127) for _ in range(h)] for _ in range(k1)])
-    w2 = np.array([[rng.randint(-127, 127) for _ in range(o)] for _ in range(h)])
-    b1 = np.array([rng.randint(-3000, 3000) for _ in range(h)])
-    b2 = np.array([rng.randint(-3000, 3000) for _ in range(o)])
-    m1 = np.array([rng.randint(1000, 20000) for _ in range(h)])
-    m2 = np.array([rng.randint(1000, 20000) for _ in range(o)])
-    s1, s2 = np.full(h, 21), np.full(o, 21)
-    kt1, nt1, nt2 = model.ceil_div(k1, N), model.ceil_div(h, N), model.ceil_div(o, N)
-    t1, t2 = model.pack_weights(w1, N), model.pack_weights(w2, N)
-    relu1 = not act_signed            # signed network: INT8 hidden layer feeds an INT8 layer
-    prog = [
-        isa.matmul(w_base=0, a_base=0, acc_base=0, p_base=0, kt=kt1, nt=nt1, m=1, act_signed=act_signed,
-                   acc_mode=AccMode.BIAS),
-        isa.requant(a_dst=20, acc_base=0, p_base=0, nt=nt1, m=1, relu=relu1),
-        isa.matmul(w_base=len(t1), a_base=20, acc_base=8, p_base=nt1 * N, kt=nt1, nt=nt2, m=1,
-                   act_signed=not relu1, acc_mode=AccMode.BIAS),
-        isa.requant(a_dst=30, acc_base=8, p_base=nt1 * N, nt=nt2, m=1, relu=False),
-        isa.halt(7),
-    ]
-
-    def pad(v, n):
-        return np.concatenate([v, np.zeros(n - len(v), dtype=np.int64)])
-
-    params = (np.concatenate([pad(b1, nt1 * N), pad(b2, nt2 * N)]), np.concatenate([pad(m1, nt1 * N), pad(m2, nt2 * N)]),
-              np.concatenate([pad(s1, nt1 * N), pad(s2, nt2 * N)]))
-
-    def reference(x):
-        hid = model.requant(model.matmul(x, w1, act_signed, bias=b1), m1, s1, relu=relu1)
-        return model.requant(model.matmul(hid, w2, not relu1, bias=b2), m2, s2, relu=False)
-
-    return k1, o, nt2, np.concatenate([t1, t2]), params, prog, reference
-
-
 def host_network(dev: Device, seed: int, act_signed: bool) -> None:
     rng = random.Random(seed)
     info = dev.info()
     assert info.n == N and info.depths == DEPTHS and info.clks_per_bit == CLKS
-    k1, o, nt2, tiles, params, prog, reference = network(rng, act_signed)
+    k1, o, nt2, tiles, params, prog, reference = selftest.two_layer_network(rng, N, act_signed)
     dev.load_weights(tiles)
     dev.load_params(*params)
     dev.load_program(prog)
@@ -287,6 +252,41 @@ async def random_matrices(dut):
     await setup(dut)
     dev, _ = make_device(dut)
     await bridge(host_random_matmuls)(dev, 3)
+
+
+@cocotb.test(skip=not FULL)
+async def selftest_script(dut):
+    """The board self-test (python -m tinytpu.selftest) passes against the simulated board and
+    reports a wrong result as FAIL; the example script's matmul (python -m tinytpu.example) is
+    right too."""
+    await setup(dut)
+    dev, _ = make_device(dut)
+    lines: list[str] = []
+
+    @bridge
+    def host() -> None:
+        ok = selftest.run_all(dev, seed=5, count=2, rounds=2, out=lines.append)
+        assert ok, "\n".join(lines)
+        assert sum(line.startswith("PASS") for line in lines) == 6
+        # The example script's function (python -m tinytpu.example) against plain NumPy.
+        r = np.random.default_rng(1)
+        for signed in (False, True):
+            w = r.integers(-127, 128, size=(2 * N + 3, N + 1))
+            x = r.integers(-128, 128, size=(3, 2 * N + 3)) if signed else r.integers(0, 256, size=(3, 2 * N + 3))
+            assert np.array_equal(example.matmul_on_board(dev, x, w, signed), x @ w)
+        # A board giving a wrong result must be reported: pretend the model expects otherwise.
+        real = model.matmul
+        try:
+            model.matmul = lambda *a, **k: real(*a, **k) + 1
+            failed: list[str] = []
+            checks = selftest.Checks(dev, seed=6, out=failed.append)
+            assert not checks.run("matmul", lambda: checks.matmul(1))
+            assert failed[0].startswith("FAIL") and "wrong results" in failed[0], failed
+        finally:
+            model.matmul = real
+
+    await host()
+    dut._log.info("\n".join(lines))
 
 
 @cocotb.test(skip=not FULL)
