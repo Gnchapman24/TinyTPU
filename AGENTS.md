@@ -175,7 +175,10 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
       - A NAK raises `DeviceError`.
     - **Board top level (A5.1, `rtl/tinytpu_top.sv`):** `reset_gen` → `uart_rx` → `cmd_engine` ↔ `tpu_core` → `uart_tx`. The engine's RESET also resets the core.
       - LEDs: heartbeat; RX / TX activity; running / halted OK / halted error; sticky NAK / timeout / framing / overflow; the ISA error code on led[15:12].
-      - Builds with `syn/build.tcl` (A5.4).
+      - **Full build (A5.4, Windows: `.\syn\vivado.ps1 -Top tinytpu_top`):** timing met after routing at 100 MHz, WNS +1.075 ns, WHS +0.035 ns; 3,702 LUTs (17.8%), 4,185 FFs (10.1%), BRAM 39, DSP 66; DRC clean. The bitstream is `%LOCALAPPDATA%\tinytpu\vivado\tinytpu_top\tinytpu_top.bit`; program it with `.\syn\vivado.ps1 -Program -Top tinytpu_top`.
+        - `syn/build.tcl` also writes the routed checkpoint (`<top>_routed.dcp`) and the 20 worst setup paths (`<top>_paths.rpt`).
+        - **Host writes are registered (A5.4):** `cmd_engine` writes a completed row one cycle later, from flip-flops. The first routed build (WNS +0.731 ns) had all 20 worst paths from the engine's row-assembly logic to the write enables of WBUF's 32 BRAMs, 79% routing delay.
+        - **Worst paths now:** the host read side into WBUF (the engine's TX state → read enable, and the sequencer's state → `host_sel` → the read-address mux), from +1.08 ns.
       - **Vivado OOC at N = 8, memory-map depths:** 3,904 LUTs (19%), 3,906 FFs (9.4%), DSP 66, BRAM 39, +1.5 ns post-synthesis. `syn/ooc.tcl` checks the ceilings (new `ceiling` table).
     - **End-to-end test (A5.1, `tb/test_tinytpu_top.py`):** board pins only. The host side is the real `Device` + `Link`, run as blocking code in a `cocotb.task.bridge` thread, on `SimSerial` (`tb/uart_bfm.py` models, `cocotb.task.resume`) with the simulation time as the link's clock.
       - Covers INFO, a two-layer network in both activation modes with sizes that aren't multiples of N (RUN and INFER, against the plain matmul / requant math), random matrices against `tinytpu.model`, RESET while running, and link recovery through the real engine (a corrupted request, lost WRITE and RUN replies; the resent RUN must not run twice).

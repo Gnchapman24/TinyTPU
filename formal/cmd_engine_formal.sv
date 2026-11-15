@@ -191,7 +191,7 @@ module cmd_engine_formal
                 !dut.e_bad_arg && (dut.cmd == 8'h02 || dut.cmd == 8'h08));
       if (ps == PS_REPLY && dut.r_mem_rows) assert (!running);
       if (ps == PS_TX && (dut.t_rows_left != '0 || dut.ts == TS_RD || dut.ts == TS_RDWAIT || dut.ts == TS_ROW)) assert (!running);
-      if (host_wr_en) assert (ps == PS_DATA && dut.wr_ok);
+      if (host_wr_en) assert ($past(ps == PS_DATA && dut.wr_ok));   // a row is written the cycle after it completes
       // Every remembered memory ID names a real memory.
       if (ps >= PS_DATA && ps <= PS_EXEC && dut.wr_ok) assert (dut.w_mem <= 8'd4);
       if (ps > PS_WAIT_RUN && ps <= PS_REPLY && dut.r_mem_rows) assert (dut.r_mem <= 8'd4);   // r_* are set as P_EXEC is left

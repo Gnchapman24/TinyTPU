@@ -328,11 +328,30 @@ module cmd_engine
   assign w_fire    = rx_byte && ps == P_DATA && wr_ok;
 
   // Host port: writes from the parser, reads from the transmitter (never at the same time).
-  assign host_wr_en   = w_fire && w_last_byte && !w_skip;
+  // A completed row is written one cycle later, from registers: the write enable and address
+  // fan out to every BRAM of WBUF, so they must start at a flip-flop (timing). The write still
+  // lands long before anything depends on it: the ACK, or INFER's program start, comes at
+  // least 3 cycles after the last payload byte, and host reads happen only while replying.
+  logic          wq_en;
+  logic [7:0]    wq_mem;
+  logic [15:0]   wq_row;
+  logic [HW-1:0] wq_data;
+
+  always_ff @(posedge clk) begin
+    if (rst) wq_en <= 1'b0;
+    else     wq_en <= w_fire && w_last_byte && !w_skip;
+    if (w_fire && w_last_byte) begin
+      wq_mem  <= w_mem;
+      wq_row  <= w_row;
+      wq_data <= w_data;
+    end
+  end
+
+  assign host_wr_en   = wq_en;
   assign host_rd_en   = ts == T_RD;
-  assign host_mem     = mem_id_t'(host_rd_en ? t_mem : w_mem);
-  assign host_addr    = host_rd_en ? t_row : w_row;
-  assign host_wr_data = w_data;
+  assign host_mem     = mem_id_t'(host_rd_en ? t_mem : wq_mem);
+  assign host_addr    = host_rd_en ? t_row : wq_row;
+  assign host_wr_data = wq_data;
 
   // Reply set-up shared by every path into P_REPLY.
   logic [7:0]  r_code;
