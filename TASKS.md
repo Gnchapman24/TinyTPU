@@ -50,7 +50,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | [x] A2.3 | Agent | `crc16_ccitt` (CCITT-FALSE) + cocotb test against the Python reference, including check value 0x29B1. | A0.4 |
 | [x] A2.4 | Agent | Loopback top-level for bring-up (echo with CRC check, LED status) + Vivado build script. | A2.1–A2.3, A0.6 |
 | [x] A2.5 | Agent | Host driver basics: open port at 1 Mbaud, CRC framing, ACK/NAK and resend, timeout. | A2.3, J1.3 |
-| [x] H2.6 | Human | Board bring-up: program the loopback bitstream, run the host loopback test at 1 Mbaud, and report results or errors. Done 2026-11-16 (UART on COM7): raw echo and 7/7 packet checks at 1 Mbaud and 115k, 0 resends. The first runs failed from a host bug, now fixed: `Link` changed the port timeout during each transfer, which on Windows reconfigures the port and corrupts bytes in flight (`87e1056`). The longer run (board test 3.3) was not logged. | A2.4, A2.5, H0.3, H0.4 |
+| [x] H2.6 | Human | Board bring-up: program the loopback bitstream, run the host loopback test at 1 Mbaud, and report results or errors. Done 2026-11-16 (UART on COM7): raw echo and 7/7 packet checks at 1 Mbaud and 115k, 0 resends. The first runs failed from a host bug, now fixed: `Link` changed the port timeout during each transfer, which on Windows reconfigures the port and corrupts bytes in flight (`791be6c`). The longer run (board test 3.3) was not logged. | A2.4, A2.5, H0.3, H0.4 |
 
 ## Phase 3 — Compute datapath
 
