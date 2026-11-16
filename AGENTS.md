@@ -168,6 +168,7 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
       - **Found while testing A4.1:** `buffer_ram`'s `rd_tag` was not gated after a reset. Stale tags in the delay line drove the array's `a_valid` after a RESET in mid-MATMUL. `rd_tag` is now gated by the reset valid bit.
     - **Host link (A2.5):** `tinytpu.link.Link` implements the protocol's host rules: one request in flight, single `write()` per packet, resend with the **same** SEQ after a timeout, bad reply, or NAK BAD_CRC, 10 ms silence before each resend, and `RESET` + `LinkError` after 3 resends. Other NAKs are returned, not resent.
       - It is tested against `tb/fake_echo.py`, a Python model of the bring-up board with fault injection.
+      - **Never change the port's `timeout` while a packet may be in flight (found on the board).** On Windows, pyserial applies each assignment by reconfiguring the port (`SetCommState`), which corrupts or drops bytes the FTDI chip is still sending. `Link` reads with the fixed `link.POLL` set at open and checks its own deadlines; `tb/test_link.py` asserts no assignment happens.
       - **Injectable clock (A5.1):** `Link(..., clock=...)` measures every deadline and quiet time with `clock()`; the default is `time.monotonic`. The end-to-end simulation passes the simulation time, so the real resend rules run there unchanged.
     - **Host API (A5.1, `tinytpu.device.Device`):** every command as a method, on a `Link`.
       - `write` / `read` take each memory's unit and split transfers into packets automatically.

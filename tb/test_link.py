@@ -190,6 +190,44 @@ def test_bringup_raw_mode():
     assert run_all(link, count=10, raw=True, out=lambda _: None)
 
 
+class _TimeoutCountingBoard(FakeEchoBoard):
+    """Counts assignments to ``timeout``: on Windows, pyserial reconfigures the port on each one,
+    which corrupts bytes the FTDI chip is still sending (seen on the board)."""
+
+    def __init__(self, timeout: float, **kw):
+        super().__init__(**kw)
+        self._timeout = timeout
+        self.timeout_sets = 0
+
+    @property
+    def timeout(self) -> float | None:
+        return self._timeout
+
+    @timeout.setter
+    def timeout(self, value: float | None) -> None:
+        self.timeout_sets = getattr(self, "timeout_sets", 0) + 1
+        self._timeout = value
+
+
+@pytest.mark.parametrize("raw", [False, True])
+def test_link_never_reconfigures_an_open_port(raw):
+    """A port opened with the link's poll timeout is never touched again, through every check
+    (resends and RESET included); a port with another timeout is set once."""
+    board = _TimeoutCountingBoard(link_mod.POLL, raw=raw)
+    board.timeout_sets = 0
+    board.drop_replies, board.corrupt_requests = 1, 1
+    link, _ = make(board)
+    assert run_all(link, count=10, rounds=3, raw=raw, out=lambda _: None)
+    assert board.timeout_sets == 0
+
+    board = _TimeoutCountingBoard(0.5)
+    board.timeout_sets = 0
+    link, _ = make(board)
+    for _ in range(5):
+        link.echo(b"x")
+    assert board.timeout_sets == 1
+
+
 class _SilentBoard:
     """Never answers; each read advances a fake clock by its timeout (no real waiting)."""
 

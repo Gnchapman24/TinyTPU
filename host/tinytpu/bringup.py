@@ -118,8 +118,7 @@ class Checks:
         got = bytearray()
         end = time.monotonic() + 1.0 + count * 2e-5
         while len(got) < count and time.monotonic() < end:
-            self.link.transport.timeout = 0.05
-            got += self.link.transport.read(count - len(got))
+            got += self.link.transport.read(count - len(got))  # the port keeps link.POLL
         assert bytes(got) == data, f"sent {count} bytes, got {len(got)} back" + (
             "" if len(got) != count else " (different bytes)")
         return f"{count} bytes echoed unchanged"

@@ -49,6 +49,14 @@ DEFAULT_TIMEOUT = 0.100
 bytes, takes 41 ms on the wire). :meth:`Link.open` scales it for slower links."""
 RETRIES = 3
 """Resends after the first attempt before giving up."""
+POLL = 0.010
+"""Read timeout of the port, in seconds: every read returns after at most this long, and
+:class:`Link` checks its own deadlines between reads.
+
+It is set once and never changed while a packet may be in flight. On Windows, pyserial applies
+every assignment to ``timeout`` by reconfiguring the port (``SetCommState``), and on the Basys3's
+FTDI chip that corrupts or drops bytes still being transmitted. Found on the board: changing the
+timeout during each reply made about 1 in 2 long requests fail at 115,200 baud."""
 
 FTDI_VID = 0x0403
 """USB vendor ID of the Basys3's FTDI chip."""
@@ -140,7 +148,7 @@ class Link:
         import serial  # pyserial; imported here so the module also works without a port
 
         ser = serial.Serial(port, baud, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE,
-                            stopbits=serial.STOPBITS_ONE, timeout=0.01, write_timeout=1.0,
+                            stopbits=serial.STOPBITS_ONE, timeout=POLL, write_timeout=1.0,
                             xonxoff=False, rtscts=False, dsrdtr=False)
         ser.reset_input_buffer()
         kwargs.setdefault("timeout", scaled_timeout(DEFAULT_TIMEOUT, baud))
@@ -250,8 +258,8 @@ class Link:
         quiet = self.silence_time if quiet is None else quiet
         end = self.clock() + limit
         last = self.clock()
+        self._poll_timeout()
         while self.clock() < end:
-            self.transport.timeout = max(quiet / 4, 0.001)
             if self.transport.read(4096):
                 last = self.clock()
             elif self.clock() - last >= quiet:
@@ -261,13 +269,17 @@ class Link:
     # Internals
     # ---------------------------------------------------------------------------------------------
 
+    def _poll_timeout(self) -> None:
+        """Give the port its fixed read timeout, touching it only if it differs (see :data:`POLL`)."""
+        if self.transport.timeout != POLL:
+            self.transport.timeout = POLL
+
     def _read_exact(self, n: int, deadline: float) -> bytes:
         buf = bytearray()
+        self._poll_timeout()
         while len(buf) < n:
-            remaining = deadline - self.clock()
-            if remaining <= 0:
+            if deadline - self.clock() <= 0:
                 raise TimeoutError
-            self.transport.timeout = min(remaining, 0.05)
             buf += self.transport.read(n - len(buf))
         return bytes(buf)
 
