@@ -17,8 +17,8 @@ Agents: update status here as part of the same change. Never do a **Human** task
 |---|---|---|---|
 | [x] H0.1 | Human | Install the latest OSS CAD Suite **dated release** in WSL at `~/tools/oss-cad-suite`. Installed release 20261112 and smoke-tested. It goes on PATH per project via `source tools/env.sh`, not in the shell profile. | — |
 | [x] H0.2 | Human | Install `uv` in WSL and on Windows. Both are at 0.13.8. The Windows host venv was created at `%LOCALAPPDATA%\tinytpu\venv` (Python 3.12.10, numpy + pyserial only). The WSL `.venv` is unaffected. | — |
-| [ ] H0.3 | Human | Set the FTDI latency timer to 1 ms: Windows Device Manager → the Basys3 COM port → Port Settings → Advanced. | — |
-| [ ] H0.4 | Human | Check that Vivado 2025.2 Hardware Manager detects the Basys3. Install the cable drivers if it doesn't. | — |
+| [ ] H0.3 | Human | Set the FTDI latency timer to 1 ms: Windows Device Manager → the Basys3 COM port → Port Settings → Advanced. Still open (2026-11-16): the registry shows `LatencyTimer = 16` for COM7, and the board runs show it (16 ms per 256-byte echo, 16 ms per INFER at both baud rates). | — |
+| [x] H0.4 | Human | Check that Vivado 2025.2 Hardware Manager detects the Basys3. Install the cable drivers if it doesn't. Done 2026-11-16: `vivado.ps1 -Program` loaded all four bitstreams. | — |
 | [ ] H0.5 | Human | Delete the empty leftover folder `C:\Users\Grant\HOME\PROJECTS\TPU\TinyTPU` once no app has it open. | — |
 | [x] A0.1 | Agent | Add `.gitignore` (per AGENTS.md §4), `.gitattributes` (`* text=auto eol=lf`; binary files marked as binary), and a short `README.md`. | — |
 | [x] A0.2 | Agent | Record the installed tool versions in `tools/versions.env`. Write `tools/setup.md` with the WSL and Windows setup steps. Also added `tools/env.sh`. | H0.1, H0.2 |
@@ -50,7 +50,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | [x] A2.3 | Agent | `crc16_ccitt` (CCITT-FALSE) + cocotb test against the Python reference, including check value 0x29B1. | A0.4 |
 | [x] A2.4 | Agent | Loopback top-level for bring-up (echo with CRC check, LED status) + Vivado build script. | A2.1–A2.3, A0.6 |
 | [x] A2.5 | Agent | Host driver basics: open port at 1 Mbaud, CRC framing, ACK/NAK and resend, timeout. | A2.3, J1.3 |
-| [ ] H2.6 | Human | Board bring-up: program the loopback bitstream, run the host loopback test at 1 Mbaud, and report results or errors. | A2.4, A2.5, H0.3, H0.4 |
+| [x] H2.6 | Human | Board bring-up: program the loopback bitstream, run the host loopback test at 1 Mbaud, and report results or errors. Done 2026-11-16 (UART on COM7): raw echo and 7/7 packet checks at 1 Mbaud and 115k, 0 resends. The first runs failed from a host bug, now fixed: `Link` changed the port timeout during each transfer, which on Windows reconfigures the port and corrupts bytes in flight (`87e1056`). The longer run (board test 3.3) was not logged. | A2.4, A2.5, H0.3, H0.4 |
 
 ## Phase 3 — Compute datapath
 
@@ -78,7 +78,7 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | [x] A5.2 | Agent | Tier 3 TCL: out-of-context synthesis, utilization/timing/power reports to JSON, ceiling check, baseline compare script. Done: `build.tcl` writes `<top>_metrics.json` and checks the ceilings; `python -m tinytpu.baseline` compares with `syn/baseline.json` (run by `vivado.ps1`). | A0.6 |
 | [x] J5.3 | Joint | First full synthesis. Agent creates `syn/baseline.json`; human reviews and approves it. Done: approved 2026-11-15 (LUT 3702, FF 4185, BRAM 39, DSP 66, WNS +1.075 ns, WHS +0.035 ns). | A5.1, A5.2 |
 | [x] A5.4 | Agent | Full implementation: build the bitstream; meet slack ≥ 0 at 100 MHz. Done: WNS +1.075 ns, WHS +0.035 ns after routing (host writes registered to get there); LUT 17.8%, FF 10.1%, BRAM 39, DSP 66. | A5.1 |
-| [ ] H5.5 | Human | On-board end-to-end test: host driver runs matmuls and compares with NumPy. Report mismatches. | A5.4, H2.6 |
+| [x] H5.5 | Human | On-board end-to-end test: host driver runs matmuls and compares with NumPy. Report mismatches. Done 2026-11-16 at 1 Mbaud: self-test 6/6, the four example matmuls match NumPy, manual LED and `btnC` checks 8/8, and 20 soak seeds all pass, with 0 resends throughout. No mismatches. The 115k build also passes the self-test 6/6. | A5.4, H2.6 |
 | [ ] A5.6 | Agent | Optional: N = 2, 4, 8 sweep with a results table and plots in the docs. | A5.2 |
 
 ## Phase 6 — Documentation
