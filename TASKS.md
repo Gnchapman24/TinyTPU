@@ -85,6 +85,6 @@ Agents: update status here as part of the same change. Never do a **Human** task
 
 | ID | Owner | Task | Depends on |
 |---|---|---|---|
-| [ ] A6.1 | Agent | Architecture page with block and dataflow diagrams (array skew, tiling, requantization path). | Phase 3 |
+| [x] A6.1 | Agent | Architecture page with block and dataflow diagrams (array skew, tiling, requantization path). Done: `docs/architecture.md` with five hand-drawn SVGs in `docs/img/` (block diagram, array dataflow, tiling, tile timing, requantization path), plus throughput, resources and a verification map. | Phase 3 |
 | [x] A6.2 | Agent | Host driver user guide and an example script. Done: `docs/host.md`, `python -m tinytpu.selftest` (board self-test for H5.5), `python -m tinytpu.example`; both tested against the simulated board. | A2.5, A5.1 |
 | [ ] H6.3 | Human | Final review of the docs site; decide what to publish (README, GitHub Pages). | A6.1, A6.2 |

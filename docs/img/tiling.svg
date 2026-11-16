@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 330" width="960" height="330" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <title>Tiling of one MATMUL (N = 4, M = 2, K = 10, Nout = 6)</title>
+  <style>
+    .cell { fill: #f9fafb; stroke: #6b7280; stroke-width: 1; }
+    .hot  { fill: #ffedd5; stroke: #ea580c; stroke-width: 2; }
+    .pad  { fill: url(#hatch); stroke: none; }
+    .lab  { fill: #111827; font-weight: bold; }
+    .idx  { fill: #111827; font-size: 13px; text-anchor: middle; }
+    .note { fill: #374151; font-size: 11px; }
+    .op   { fill: #111827; font-size: 26px; text-anchor: middle; }
+    .code { fill: #111827; font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 12px; }
+  </style>
+  <defs>
+    <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="6" height="6" fill="#ffffff" fill-opacity="0"/><line x1="0" y1="0" x2="0" y2="6" stroke="#9ca3af" stroke-width="2"/>
+    </pattern>
+  </defs>
+  <rect width="960" height="330" fill="#ffffff"/>
+<text class="lab" x="20" y="145">X (M × K) in ABUF</text>
+<text class="note" x="20" y="161">vector a_base + m·kt + k</text>
+<rect class="cell" x="20" y="175" width="64" height="30"/>
+<text class="idx" x="52.0" y="195.0">0</text>
+<rect class="cell" x="84" y="175" width="64" height="30"/>
+<text class="idx" x="116.0" y="195.0">1</text>
+<rect class="hot" x="148" y="175" width="64" height="30"/>
+<rect class="pad" x="180.0" y="176" width="31.0" height="28"/>
+<text class="idx" x="180.0" y="195.0">2</text>
+<rect class="cell" x="20" y="205" width="64" height="30"/>
+<text class="idx" x="52.0" y="225.0">3</text>
+<rect class="cell" x="84" y="205" width="64" height="30"/>
+<text class="idx" x="116.0" y="225.0">4</text>
+<rect class="hot" x="148" y="205" width="64" height="30"/>
+<rect class="pad" x="180.0" y="206" width="31.0" height="28"/>
+<text class="idx" x="180.0" y="225.0">5</text>
+<text class="op" x="252" y="214">×</text>
+<g transform="translate(20,0)">
+<text class="lab" x="272" y="18">W (K × Nout) in WBUF</text>
+<text class="note" x="272" y="34">tile w_base + n·kt + k</text>
+<rect class="cell" x="272" y="48" width="64" height="64"/>
+<text class="idx" x="304.0" y="85.0">0</text>
+<rect class="cell" x="272" y="112" width="64" height="64"/>
+<text class="idx" x="304.0" y="149.0">1</text>
+<rect class="cell" x="272" y="176" width="64" height="64"/>
+<rect class="pad" x="273" y="208.0" width="62" height="31.0"/>
+<text class="idx" x="304.0" y="213.0">2</text>
+<rect class="cell" x="336" y="48" width="64" height="64"/>
+<rect class="pad" x="368.0" y="49" width="31.0" height="62"/>
+<text class="idx" x="368.0" y="85.0">3</text>
+<rect class="cell" x="336" y="112" width="64" height="64"/>
+<rect class="pad" x="368.0" y="113" width="31.0" height="62"/>
+<text class="idx" x="368.0" y="149.0">4</text>
+<rect class="hot" x="336" y="176" width="64" height="64"/>
+<rect class="pad" x="368.0" y="177" width="31.0" height="62"/>
+<rect class="pad" x="337" y="208.0" width="62" height="31.0"/>
+<text class="idx" x="368.0" y="213.0">5</text>
+<text class="note" x="264" y="84.0" text-anchor="end">k=0</text>
+<text class="note" x="264" y="148.0" text-anchor="end">k=1</text>
+<text class="note" x="264" y="212.0" text-anchor="end">k=2</text>
+<text class="note" x="304.0" y="256" text-anchor="middle">n=0</text>
+<text class="note" x="368.0" y="256" text-anchor="middle">n=1</text>
+<text class="op" x="430" y="214">=</text>
+<text class="lab" x="460" y="145">Y (M × Nout) in ACC</text>
+<text class="note" x="460" y="161">row acc_base + m·nt + n</text>
+<rect class="cell" x="460" y="175" width="64" height="30"/>
+<text class="idx" x="492.0" y="195.0">0</text>
+<rect class="hot" x="524" y="175" width="64" height="30"/>
+<rect class="pad" x="556.0" y="176" width="31.0" height="28"/>
+<text class="idx" x="556.0" y="195.0">1</text>
+<rect class="cell" x="460" y="205" width="64" height="30"/>
+<text class="idx" x="492.0" y="225.0">2</text>
+<rect class="hot" x="524" y="205" width="64" height="30"/>
+<rect class="pad" x="556.0" y="206" width="31.0" height="28"/>
+<text class="idx" x="556.0" y="225.0">3</text>
+<text class="note" x="14" y="194.0" text-anchor="end"></text>
+<text class="note" x="14" y="224.0" text-anchor="end"></text>
+<text class="code" x="628" y="70" xml:space="preserve">for n in 0 … nt−1:           (column tile)</text>
+<text class="code" x="628" y="88" xml:space="preserve">  bias mode: read N biases from PTAB</text>
+<text class="code" x="628" y="106" xml:space="preserve">  for k in 0 … kt−1:         (inner tile)</text>
+<text class="code" x="628" y="124" xml:space="preserve">    load weight tile n·kt + k   (N rows)</text>
+<text class="code" x="628" y="142" xml:space="preserve">    for m in 0 … M−1:</text>
+<text class="code" x="628" y="160" xml:space="preserve">      vector m·kt + k → array</text>
+<text class="code" x="628" y="178" xml:space="preserve">      result → ACC row m·nt + n</text>
+<text class="code" x="628" y="196" xml:space="preserve">        k = 0: overwrite / bias</text>
+<text class="code" x="628" y="214" xml:space="preserve">        k > 0: accumulate</text>
+</g>
+<text class="note" x="20" y="300">Example: N = 4, M = 2, K = 10, Nout = 6, so kt = 3 and nt = 2. Hatched: zeros added by the host (K and Nout are padded to multiples of N; M is not).</text>
+<text class="note" x="20" y="318">Orange: weight tile (n, k) = (1, 2) multiplies vectors k = 2 of every row m, and adds into ACC column tile n = 1.</text>
+</svg>

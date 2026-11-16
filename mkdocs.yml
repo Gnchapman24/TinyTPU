@@ -13,6 +13,7 @@ theme:
 # Phase 1 / Phase 6 tasks.
 nav:
   - Home: index.md
+  - Architecture: architecture.md
   - ISA: isa.md
   - UART protocol: uart_protocol.md
   - Memory map: memory_map.md

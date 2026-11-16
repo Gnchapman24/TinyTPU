@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" width="900" height="300" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <title>Requantization path</title>
+  <style>
+    .mem  { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.2; }
+    .hot  { fill: #ffedd5; stroke: #ea580c; stroke-width: 2; }
+    .comp { fill: #ffedd5; stroke: #ea580c; stroke-width: 1.2; }
+    .ctrl { fill: #dcfce7; stroke: #16a34a; stroke-width: 1.2; }
+    .lab  { fill: #111827; font-weight: bold; }
+    .idx  { fill: #111827; font-size: 11px; text-anchor: middle; }
+    .mid  { fill: #111827; text-anchor: middle; }
+    .note { fill: #374151; font-size: 11px; }
+    .data { stroke: #111827; stroke-width: 1.6; fill: none; marker-end: url(#k); }
+  </style>
+  <defs><marker id="k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#111827"/></marker></defs>
+  <rect width="900" height="300" fill="#ffffff"/>
+<text class="lab" x="20" y="40">ACC row acc_base + m·nt + n</text>
+<rect class="mem" x="20" y="50" width="70" height="30"/>
+<text class="idx" x="55" y="69">col 0: INT32</text>
+<rect class="mem" x="90" y="50" width="70" height="30"/>
+<text class="idx" x="125" y="69">col 1: INT32</text>
+<rect class="hot" x="160" y="50" width="70" height="30"/>
+<text class="idx" x="195" y="69">col 2: INT32</text>
+<rect class="mem" x="230" y="50" width="70" height="30"/>
+<text class="idx" x="265" y="69">col 3: INT32</text>
+<text class="lab" x="20" y="150">PTAB entry p_base + n·N + col</text>
+<rect class="mem" x="20" y="160" width="120" height="30"/>
+<text class="idx" x="80.0" y="179">bias INT32</text>
+<rect class="hot" x="140" y="160" width="80" height="30"/>
+<text class="idx" x="180.0" y="179">M u16</text>
+<rect class="hot" x="220" y="160" width="60" height="30"/>
+<text class="idx" x="250.0" y="179">s u6</text>
+<text class="note" x="20" y="208">(bias was used by MATMUL)</text>
+<rect class="comp" x="380" y="70" width="250" height="120" rx="5"/>
+<text class="mid" x="505.0" y="92" font-weight="bold">requant (6 cycles, 2 DSP48E1)</text>
+<text class="mid" x="505.0" y="118" xml:space="preserve">p = acc · M   (48 bits, exact)</text>
+<text class="mid" x="505.0" y="136" xml:space="preserve">y = (p + R) >>> s,  R = 2^(s−1) or 0</text>
+<text class="mid" x="505.0" y="154" xml:space="preserve">ReLU on: clamp to [0, 255]</text>
+<text class="mid" x="505.0" y="172" xml:space="preserve">ReLU off: clamp to [−128, 127]</text>
+<path class="data" d="M195,80 L195,110 L380,110"/>
+<text class="note" x="250" y="104">acc (column col)</text>
+<path class="data" d="M230,160 L230,150 L380,150"/>
+<text class="note" x="250" y="144">M, s</text>
+<rect class="ctrl" x="420" y="8" width="170" height="30" rx="4"/>
+<text class="mid" x="505" y="27">REQUANT flag relu</text>
+<path class="data" d="M505,38 L505,70"/>
+<text class="lab" x="690" y="100">ABUF vector a_dst + m·nt + n</text>
+<rect class="mem" x="690" y="110" width="45" height="30"/>
+<text class="idx" x="712" y="129"></text>
+<rect class="mem" x="735" y="110" width="45" height="30"/>
+<text class="idx" x="757" y="129"></text>
+<rect class="hot" x="780" y="110" width="45" height="30"/>
+<text class="idx" x="802" y="129">y</text>
+<rect class="mem" x="825" y="110" width="45" height="30"/>
+<text class="idx" x="847" y="129"></text>
+<text class="note" x="690" y="158">one byte (lane col) per cycle,</text>
+<text class="note" x="690" y="172">byte write enable</text>
+<path class="data" d="M630,125 L690,125"/>
+<text class="note" x="640" y="119">byte</text>
+<text class="note" x="20" y="240">requant_ctrl visits n, then m, then col: one value per cycle, no stalls. The ACC read (1 cycle) is delayed to meet the PTAB read (2 cycles); a tag {vector, col} travels with each value.</text>
+<text class="note" x="20" y="258">The written vector is exactly activation (m, k = n) of the next layer, whose kt is this layer's nt: layers chain with no data movement by the host.</text>
+<text class="note" x="20" y="276">ReLU on gives UINT8, so the next MATMUL uses act_signed = 0; ReLU off gives INT8, act_signed = 1.</text>
+</svg>

@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <title>TinyTPU block diagram</title>
+  <style>
+    .frame { fill: none; stroke: #6b7280; stroke-width: 1.2; stroke-dasharray: 6 4; }
+    .flabel { fill: #374151; font-weight: bold; font-size: 13px; }
+    .link { fill: #f3f4f6; stroke: #6b7280; stroke-width: 1.2; }
+    .ctrl { fill: #dcfce7; stroke: #16a34a; stroke-width: 1.2; }
+    .mem  { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.2; }
+    .comp { fill: #ffedd5; stroke: #ea580c; stroke-width: 1.2; }
+    .name { fill: #111827; font-weight: bold; text-anchor: middle; }
+    .sub  { fill: #374151; font-size: 11px; text-anchor: middle; }
+    .note { fill: #4b5563; font-size: 11px; }
+    .data { stroke: #111827; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+    .addr { stroke: #16a34a; stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; marker-end: url(#arrowg); }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#111827"/>
+    </marker>
+    <marker id="arrowg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+  </defs>
+  <rect width="960" height="560" fill="#ffffff"/>
+
+  <!-- Host -->
+  <rect class="link" x="10" y="190" width="115" height="100" rx="6"/>
+  <text class="name" x="67" y="215">Host PC</text>
+  <text class="sub" x="67" y="235">tinytpu.device</text>
+  <text class="sub" x="67" y="251">tinytpu.link</text>
+  <text class="sub" x="67" y="267">(pyserial)</text>
+
+  <!-- Board top level -->
+  <rect class="frame" x="150" y="15" width="800" height="535" rx="8"/>
+  <text class="flabel" x="162" y="36">tinytpu_top (Basys3)</text>
+
+  <rect class="link" x="170" y="150" width="105" height="44" rx="4"/>
+  <text class="name" x="222" y="170">uart_rx</text>
+  <text class="sub" x="222" y="185">8N1, mid-bit sample</text>
+  <rect class="link" x="170" y="296" width="105" height="44" rx="4"/>
+  <text class="name" x="222" y="316">uart_tx</text>
+  <text class="sub" x="222" y="331">8N1</text>
+  <path class="data" d="M125,215 L170,172"/>
+  <path class="data" d="M170,318 L125,265"/>
+  <text class="note" x="128" y="166">RsRx</text>
+  <text class="note" x="128" y="330">RsTx</text>
+  <text class="note" x="128" y="350">1 Mbaud</text>
+
+  <rect class="link" x="170" y="420" width="105" height="44" rx="4"/>
+  <text class="name" x="222" y="440">reset_gen</text>
+  <text class="sub" x="222" y="455">btnC, power-on</text>
+  <text class="note" x="170" y="480">rst to every module</text>
+
+  <!-- Packet engine -->
+  <rect class="ctrl" x="300" y="120" width="135" height="240" rx="4"/>
+  <text class="name" x="367" y="142">cmd_engine</text>
+  <text class="sub" x="367" y="168">receive queue (32 B)</text>
+  <text class="sub" x="367" y="186">parser, NAK rules</text>
+  <text class="sub" x="367" y="204">CRC-16 check</text>
+  <text class="sub" x="367" y="222">write-through rows</text>
+  <text class="sub" x="367" y="240">SEQ / duplicates</text>
+  <text class="sub" x="367" y="258">5 ms timeout</text>
+  <text class="sub" x="367" y="276">replies + CRC</text>
+  <text class="sub" x="367" y="294">pending RUN / INFER</text>
+  <path class="data" d="M275,172 L300,172"/>
+  <path class="data" d="M300,318 L275,318"/>
+
+  <rect class="link" x="300" y="420" width="135" height="44" rx="4"/>
+  <text class="name" x="367" y="440">led[15:0]</text>
+  <text class="sub" x="367" y="455">activity, state, errors</text>
+
+  <!-- Core -->
+  <rect class="frame" x="458" y="40" width="478" height="495" rx="8"/>
+  <text class="flabel" x="868" y="60">tpu_core</text>
+
+  <path class="data" d="M435,300 L462,300"/>
+  <text class="note" x="300" y="378">host port into the core: every</text>
+  <text class="note" x="300" y="392">memory (while stopped), run,</text>
+  <text class="note" x="300" y="406">abort, status</text>
+
+  <rect class="mem" x="478" y="72" width="112" height="46" rx="4"/>
+  <text class="name" x="534" y="92">IMEM</text>
+  <text class="sub" x="534" y="108">128 × 128 b, LUT RAM</text>
+  <rect class="ctrl" x="610" y="72" width="185" height="46" rx="4"/>
+  <text class="name" x="702" y="92">sequencer</text>
+  <text class="sub" x="702" y="108">fetch · decode · range check</text>
+  <path class="data" d="M590,95 L610,95"/>
+
+  <rect class="ctrl" x="490" y="160" width="140" height="40" rx="4"/>
+  <text class="name" x="560" y="178">matmul_ctrl</text>
+  <text class="sub" x="560" y="193">tile loops n, k, m</text>
+  <rect class="ctrl" x="780" y="160" width="140" height="40" rx="4"/>
+  <text class="name" x="850" y="178">requant_ctrl</text>
+  <text class="sub" x="850" y="193">loops n, m, col</text>
+  <path class="data" d="M702,118 L702,138 L560,138 L560,160"/>
+  <path class="data" d="M702,138 L850,138 L850,160"/>
+  <text class="note" x="710" y="133">start · instr · done</text>
+
+  <!-- Datapath -->
+  <rect class="mem" x="620" y="232" width="125" height="44" rx="4"/>
+  <text class="name" x="682" y="251">WBUF</text>
+  <text class="sub" x="682" y="267">weight tiles, 32 BRAM</text>
+  <rect class="mem" x="480" y="312" width="110" height="44" rx="4"/>
+  <text class="name" x="535" y="331">ABUF</text>
+  <text class="sub" x="535" y="347">vectors, 2 BRAM</text>
+  <rect class="comp" x="620" y="300" width="125" height="90" rx="4"/>
+  <text class="name" x="682" y="330">systolic_array</text>
+  <text class="sub" x="682" y="348">8 × 8 PEs</text>
+  <text class="sub" x="682" y="364">64 DSP48E1</text>
+  <rect class="mem" x="800" y="300" width="120" height="44" rx="4"/>
+  <text class="name" x="860" y="319">PTAB</text>
+  <text class="sub" x="860" y="335">bias, M, s · 1 BRAM</text>
+  <rect class="comp" x="620" y="420" width="125" height="48" rx="4"/>
+  <text class="name" x="682" y="440">acc_unit</text>
+  <text class="sub" x="682" y="456">ACC INT32 · 4 BRAM</text>
+  <rect class="comp" x="800" y="420" width="120" height="48" rx="4"/>
+  <text class="name" x="860" y="440">requant</text>
+  <text class="sub" x="860" y="456">2 DSP48E1</text>
+
+  <path class="data" d="M682,276 L682,300"/>
+  <text class="note" x="688" y="293">weights</text>
+  <path class="data" d="M590,334 L620,334"/>
+  <text class="note" x="593" y="374">activations</text>
+  <path class="data" d="M682,390 L682,420"/>
+  <text class="note" x="688" y="410">INT32 vectors</text>
+  <path class="data" d="M860,344 L860,420"/>
+  <text class="note" x="866" y="395">M, s</text>
+  <path class="data" d="M800,328 L770,328 L770,432 L745,432"/>
+  <text class="note" x="774" y="388">bias</text>
+  <path class="data" d="M745,456 L800,456"/>
+  <text class="note" x="750" y="480">INT32</text>
+  <path class="data" d="M860,468 L860,512 L535,512 L535,356"/>
+  <text class="note" x="600" y="527">INT8 results, one byte per cycle, into the ABUF lane of their column</text>
+
+  <!-- Address paths -->
+  <path class="addr" d="M600,200 L600,254 L620,254"/>
+  <path class="addr" d="M520,200 L520,312"/>
+  <path class="addr" d="M850,200 L850,300"/>
+
+  <!-- Legend -->
+  <rect class="ctrl" x="170" y="500" width="14" height="10"/>
+  <text class="note" x="189" y="509">control</text>
+  <rect class="mem" x="240" y="500" width="14" height="10"/>
+  <text class="note" x="259" y="509">memory</text>
+  <rect class="comp" x="310" y="500" width="14" height="10"/>
+  <text class="note" x="329" y="509">arithmetic</text>
+  <line class="addr" x1="170" y1="528" x2="200" y2="528"/>
+  <text class="note" x="206" y="532">read address + tag</text>
+</svg>

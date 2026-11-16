@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 808 290" width="808" height="290" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <title>Tile timing at the array inputs (N = 4, M = 3)</title>
+  <style>
+    .lab { fill: #111827; font-weight: bold; }
+    .sub { fill: #4b5563; font-size: 10px; }
+    .cyc { fill: #6b7280; font-size: 10px; text-anchor: middle; }
+    .cell { fill: #111827; font-size: 11px; text-anchor: middle; }
+    .grid { stroke: #e5e7eb; stroke-width: 1; }
+    .t0 { fill: #dbeafe; stroke: #2563eb; }
+    .t1 { fill: #ffedd5; stroke: #ea580c; }
+    .t2 { fill: #dcfce7; stroke: #16a34a; }
+    .note { fill: #374151; font-size: 11px; }
+    .dim { stroke: #111827; stroke-width: 1; fill: none; marker-start: url(#d); marker-end: url(#d); }
+  </style>
+  <defs><marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#111827"/></marker></defs>
+  <rect width="808" height="290" fill="#ffffff"/>
+  <text class="cyc" x="162" y="84" text-anchor="end">cycle</text>
+<line class="grid" x1="170" y1="72" x2="170" y2="200"/>
+<text class="cyc" x="186.0" y="84">0</text>
+<line class="grid" x1="202" y1="72" x2="202" y2="200"/>
+<text class="cyc" x="218.0" y="84">1</text>
+<line class="grid" x1="234" y1="72" x2="234" y2="200"/>
+<text class="cyc" x="250.0" y="84">2</text>
+<line class="grid" x1="266" y1="72" x2="266" y2="200"/>
+<text class="cyc" x="282.0" y="84">3</text>
+<line class="grid" x1="298" y1="72" x2="298" y2="200"/>
+<text class="cyc" x="314.0" y="84">4</text>
+<line class="grid" x1="330" y1="72" x2="330" y2="200"/>
+<text class="cyc" x="346.0" y="84">5</text>
+<line class="grid" x1="362" y1="72" x2="362" y2="200"/>
+<text class="cyc" x="378.0" y="84">6</text>
+<line class="grid" x1="394" y1="72" x2="394" y2="200"/>
+<text class="cyc" x="410.0" y="84">7</text>
+<line class="grid" x1="426" y1="72" x2="426" y2="200"/>
+<text class="cyc" x="442.0" y="84">8</text>
+<line class="grid" x1="458" y1="72" x2="458" y2="200"/>
+<text class="cyc" x="474.0" y="84">9</text>
+<line class="grid" x1="490" y1="72" x2="490" y2="200"/>
+<text class="cyc" x="506.0" y="84">10</text>
+<line class="grid" x1="522" y1="72" x2="522" y2="200"/>
+<text class="cyc" x="538.0" y="84">11</text>
+<line class="grid" x1="554" y1="72" x2="554" y2="200"/>
+<text class="cyc" x="570.0" y="84">12</text>
+<line class="grid" x1="586" y1="72" x2="586" y2="200"/>
+<text class="cyc" x="602.0" y="84">13</text>
+<line class="grid" x1="618" y1="72" x2="618" y2="200"/>
+<text class="cyc" x="634.0" y="84">14</text>
+<line class="grid" x1="650" y1="72" x2="650" y2="200"/>
+<text class="cyc" x="666.0" y="84">15</text>
+<line class="grid" x1="682" y1="72" x2="682" y2="200"/>
+<text class="cyc" x="698.0" y="84">16</text>
+<line class="grid" x1="714" y1="72" x2="714" y2="200"/>
+<text class="cyc" x="730.0" y="84">17</text>
+<line class="grid" x1="746" y1="72" x2="746" y2="200"/>
+<text class="cyc" x="762.0" y="84">18</text>
+<line class="grid" x1="778" y1="72" x2="778" y2="200"/>
+<text class="lab" x="10" y="102">weight row loaded</text><text class="sub" x="10" y="114">w_load, w_row</text>
+<text class="lab" x="10" y="142">vector enters</text><text class="sub" x="10" y="154">a_valid</text>
+<text class="lab" x="10" y="182">result vector</text><text class="sub" x="10" y="194">out_valid</text>
+<rect class="t0" x="171" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="186.0" y="107">r0</text>
+<rect class="t0" x="203" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="218.0" y="107">r1</text>
+<rect class="t0" x="235" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="250.0" y="107">r2</text>
+<rect class="t0" x="267" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="282.0" y="107">r3</text>
+<rect class="t0" x="171" y="130" width="30" height="26" rx="3"/>
+<text class="cell" x="186.0" y="147">x0</text>
+<rect class="t0" x="459" y="170" width="30" height="26" rx="3"/>
+<text class="cell" x="474.0" y="187">y0</text>
+<rect class="t0" x="203" y="130" width="30" height="26" rx="3"/>
+<text class="cell" x="218.0" y="147">x1</text>
+<rect class="t0" x="491" y="170" width="30" height="26" rx="3"/>
+<text class="cell" x="506.0" y="187">y1</text>
+<rect class="t0" x="235" y="130" width="30" height="26" rx="3"/>
+<text class="cell" x="250.0" y="147">x2</text>
+<rect class="t0" x="523" y="170" width="30" height="26" rx="3"/>
+<text class="cell" x="538.0" y="187">y2</text>
+<rect class="t1" x="363" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="378.0" y="107">r0</text>
+<rect class="t1" x="395" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="410.0" y="107">r1</text>
+<rect class="t1" x="427" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="442.0" y="107">r2</text>
+<rect class="t1" x="459" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="474.0" y="107">r3</text>
+<rect class="t1" x="363" y="130" width="30" height="26" rx="3"/>
+<text class="cell" x="378.0" y="147">x0</text>
+<rect class="t1" x="651" y="170" width="30" height="26" rx="3"/>
+<text class="cell" x="666.0" y="187">y0</text>
+<rect class="t1" x="395" y="130" width="30" height="26" rx="3"/>
+<text class="cell" x="410.0" y="147">x1</text>
+<rect class="t1" x="683" y="170" width="30" height="26" rx="3"/>
+<text class="cell" x="698.0" y="187">y1</text>
+<rect class="t1" x="427" y="130" width="30" height="26" rx="3"/>
+<text class="cell" x="442.0" y="147">x2</text>
+<rect class="t1" x="715" y="170" width="30" height="26" rx="3"/>
+<text class="cell" x="730.0" y="187">y2</text>
+<rect class="t2" x="555" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="570.0" y="107">r0</text>
+<rect class="t2" x="587" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="602.0" y="107">r1</text>
+<rect class="t2" x="619" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="634.0" y="107">r2</text>
+<rect class="t2" x="651" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="666.0" y="107">r3</text>
+<rect class="t2" x="555" y="130" width="30" height="26" rx="3"/>
+<text class="cell" x="570.0" y="147">x0</text>
+<rect class="t2" x="587" y="130" width="30" height="26" rx="3"/>
+<text class="cell" x="602.0" y="147">x1</text>
+<rect class="t2" x="619" y="130" width="30" height="26" rx="3"/>
+<text class="cell" x="634.0" y="147">x2</text>
+<rect class="t0" x="747" y="90" width="30" height="26" rx="3"/>
+<text class="cell" x="762.0" y="107">r0</text>
+<rect class="t0" x="747" y="130" width="30" height="26" rx="3"/>
+<text class="cell" x="762.0" y="147">x0</text>
+<line class="dim" x1="250.0" y1="226" x2="378.0" y2="226"/>
+<text class="note" x="314.0" y="221" text-anchor="middle">N cycles: x2 clears the array</text>
+<line class="dim" x1="186.0" y1="262" x2="378.0" y2="262"/>
+<text class="note" x="282.0" y="257" text-anchor="middle">tile period T = N + M − 1 = 6</text>
+<line class="dim" x1="186.0" y1="52" x2="474.0" y2="52"/>
+<text class="note" x="330.0" y="47" text-anchor="middle">latency 2N + 1 = 9</text>
+<text class="note" x="436" y="228">Colours: tiles (n, k) = (0, 0), (0, 1), (0, 2), …</text>
+<text class="note" x="436" y="244">Result ym goes to ACC row m·nt + n: overwrite or</text>
+<text class="note" x="436" y="260">bias when k = 0, else accumulate.</text>
+</svg>

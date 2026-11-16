@@ -7,7 +7,7 @@ A minimal INT8 Tensor Processing Unit for the Digilent Basys3 (Xilinx Artix-7 `x
 - Per-channel requantization with optional ReLU
 - Host link over the on-board USB-UART at 1 Mbaud, with CRC-16 packets
 
-**Status:** early stage. See [RTL modules](rtl/index.md) for the generated module reference.
+Start with the [architecture](architecture.md) overview. [Using the board](host.md) covers running it, and [RTL modules](rtl/index.md) is the generated module reference.
 
 ## Building these docs
 
