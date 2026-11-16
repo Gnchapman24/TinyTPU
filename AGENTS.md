@@ -190,6 +190,9 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
         - `--probe` finds the UART port with INFO, and recognises the bring-up design
       - **`python -m tinytpu.example`:** a commented matmul on the board, checked against NumPy.
       - **Tested in simulation:** both run against the simulated board in `tb/test_tinytpu_top.py`. The selftest must pass, and must report a wrong result as FAIL. Probe and CLI are tested in `tb/test_selftest.py` with fake ports.
+      - **`--manual`:** interactive checks at the board: `leds` (errors 1 / 4 / 6 and OK on `led[4]`, `led[5]`, `led[15:12]`) and `button` (`btnC` returns the core to idle and keeps every memory). The simulation answers from the LED pins and pulses `btnC`.
+      - **Board test plan:** `docs/board_test.md`, a step-by-step first session (H0.3, H0.4, H2.6, H5.5) with expected results.
+    - **Fallback baud rate:** `syn/build.tcl` builds named variants (`variants` table; outputs named `<top>_<variant>`; `vivado.ps1 -Variant`). `115k` sets `CLKS_PER_BIT = 868` (115,207 baud) for both board tops. The host tools take `--baud`, and `Link.open` scales its default reply timeout to the baud rate. `tinytpu_top` passed end to end in simulation at 868. Variants are not compared with the baseline.
     - **Port discovery:** Windows can show **two** COM ports for the Basys3's FT2232H (JTAG and UART channels) with identical USB details, and other FT2232H boards match too.
       - Never pick one by position. Use `--port`, or `python -m tinytpu.bringup --probe`, which sends one ECHO to each and reports which answers.
       - Seen on the dev machine: COM6 and COM7, both `0403:6010`, serial "8".

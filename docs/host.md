@@ -67,7 +67,9 @@ uv run --no-default-groups python -m tinytpu.selftest --port COM7
 
 - Every comparison is bit-exact, against `tinytpu.model` (the same reference the simulations use).
 - The summary line counts the link's resends and timeouts. On a healthy link they are all 0.
-- Options: `--count` (matmuls), `--rounds` (INFERs), `--seed`. Use `--help` for details.
+- **`--manual`** adds two checks that need you at the board: confirming the status and error-code LEDs, and pressing `btnC`, which must leave every memory unchanged.
+- Options: `--count` (matmuls), `--rounds` (INFERs), `--seed`, and `--baud` for the 115,200-baud fallback build (`-Variant 115k`). Use `--help` for details.
+- The [board test plan](board_test.md) is a complete first session: link, self-test, manual checks and a longer run.
 - The same script runs in simulation against the RTL before each change is merged (`tb/test_tinytpu_top.py`), so a failure on the board points at the board, the link or the build, not at the script.
 
 ## 5. Your own computation

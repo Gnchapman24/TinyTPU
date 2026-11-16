@@ -86,7 +86,8 @@ It runs seven checks and prints `PASS`/`FAIL` for each, then a summary of link s
 - The exit status is 0 only if every check passed.
 - **Expected round trip:** about 5–8 ms per 256-byte echo, of which about 5.3 ms is wire time at 1 Mbaud. The rest is USB and driver latency, which is why the FTDI latency timer should be 1 ms.
 - **`--raw`** (with `sw[0]` on) tests raw byte echo instead.
-- Options: `--count`, `--rounds`, `--seed`. Use `--help` for details.
+- Options: `--count`, `--rounds`, `--seed`, and `--baud` for the 115,200-baud fallback build (`.\syn\vivado.ps1 -Top loopback_top -Variant 115k`). Use `--help` for details.
+- The [board test plan](board_test.md) runs these tests as part of a full first session on the board.
 
 ## Limits of this design
 

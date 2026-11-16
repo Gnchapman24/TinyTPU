@@ -171,7 +171,7 @@ def test_probe_finds_the_answering_port(monkeypatch):
     jtag.drop_replies = 100            # the JTAG channel never answers
     boards = {"COM6": jtag, "COM7": FakeEchoBoard()}
     monkeypatch.setattr(bringup.Link, "open",
-                        classmethod(lambda cls, port, **kw: Link(boards[port], silence=0.006, **kw)))
+                        classmethod(lambda cls, port, *_, **kw: Link(boards[port], silence=0.006, **kw)))
     lines: list[str] = []
     assert bringup.probe(["COM6", "COM7"], out=lines.append) == ["COM7"]
     assert lines[0].startswith("COM6: no valid answer")
@@ -226,3 +226,23 @@ def test_injected_clock_drives_every_deadline():
     statuses = [p for p in board.writes if p[1] == Cmd.STATUS]
     assert len(statuses) == 4 and len({p[2] for p in statuses}) == 1   # same SEQ every time
     assert board.writes[-1][1] == Cmd.RESET
+
+
+def test_open_scales_the_reply_timeout_to_the_baud_rate(monkeypatch):
+    import serial
+
+    opened = []
+
+    class FakeSerial:
+        def __init__(self, port, baud, **kw):
+            opened.append((port, baud))
+
+        def reset_input_buffer(self):
+            pass
+
+    monkeypatch.setattr(serial, "Serial", FakeSerial)
+    assert Link.open("COM7").timeout == link_mod.DEFAULT_TIMEOUT                 # 1 Mbaud
+    assert Link.open("COM7", 115_200).timeout == pytest.approx(0.100 * 1e6 / 115_200)
+    assert Link.open("COM7", 115_200, timeout=0.3).timeout == 0.3              # explicit wins
+    assert Link.open("COM7", 2_000_000).timeout == link_mod.DEFAULT_TIMEOUT    # never shorter
+    assert opened == [("COM7", 1_000_000), ("COM7", 115_200), ("COM7", 115_200), ("COM7", 2_000_000)]

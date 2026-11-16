@@ -19,6 +19,7 @@ nav:
   - Memory map: memory_map.md
   - Board bring-up: bringup.md
   - Using the board: host.md
+  - Board test plan: board_test.md
   - RTL modules: rtl/index.md
   - Python API:
       - tinytpu.isa: api/isa.md

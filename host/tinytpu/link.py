@@ -45,7 +45,8 @@ BAUD = 1_000_000
 SILENCE = 0.010
 """Quiet time before a resend: longer than the FPGA's 5 ms inter-byte timeout."""
 DEFAULT_TIMEOUT = 0.100
-"""Default time to wait for a complete reply, in seconds."""
+"""Default time to wait for a complete reply at 1 Mbaud, in seconds (the largest reply, 4103
+bytes, takes 41 ms on the wire). :meth:`Link.open` scales it for slower links."""
 RETRIES = 3
 """Resends after the first attempt before giving up."""
 
@@ -53,6 +54,11 @@ FTDI_VID = 0x0403
 """USB vendor ID of the Basys3's FTDI chip."""
 FT2232H_PID = 0x6010
 """USB product ID of the FT2232H (JTAG on one channel, UART on the other)."""
+
+
+def scaled_timeout(seconds: float, baud: int) -> float:
+    """Return ``seconds`` (a timeout chosen for 1 Mbaud) stretched for a slower ``baud``."""
+    return seconds * max(1.0, BAUD / baud)
 
 
 class Transport(Protocol):
@@ -127,8 +133,9 @@ class Link:
 
         Args:
             port: Port name, e.g. ``"COM5"`` on Windows or ``"/dev/ttyUSB1"`` on Linux.
-            baud: Bit rate. Must match the FPGA's ``CLKS_PER_BIT``.
-            **kwargs: Passed to :class:`Link`.
+            baud: Bit rate. Must match the FPGA's ``CLKS_PER_BIT`` (100 MHz / ``CLKS_PER_BIT``).
+            **kwargs: Passed to :class:`Link`. Without ``timeout``, the default reply timeout is
+                scaled to ``baud`` (:func:`scaled_timeout`).
         """
         import serial  # pyserial; imported here so the module also works without a port
 
@@ -136,6 +143,7 @@ class Link:
                             stopbits=serial.STOPBITS_ONE, timeout=0.01, write_timeout=1.0,
                             xonxoff=False, rtscts=False, dsrdtr=False)
         ser.reset_input_buffer()
+        kwargs.setdefault("timeout", scaled_timeout(DEFAULT_TIMEOUT, baud))
         return cls(ser, **kwargs)
 
     def close(self) -> None:

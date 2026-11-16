@@ -1,8 +1,13 @@
 # TinyTPU Vivado batch build: synthesis, implementation, reports, bitstream.
 #
 # Windows (PowerShell), from any directory:
-#   vivado -mode batch -nojournal -log <out_dir>\vivado.log -source <repo>\syn\build.tcl -tclargs <top> <out_dir>
-# or use syn\vivado.ps1, which fills in the paths. <out_dir> must be on a local Windows disk,
+#   vivado -mode batch -nojournal -log <out_dir>\vivado.log -source <repo>\syn\build.tcl -tclargs <top> <out_dir> [<variant>]
+# or use syn\vivado.ps1 (-Variant <variant>), which fills in the paths.
+#
+# A variant builds the same top with some parameters changed (table `variants` below); every
+# output file is then named <top>_<variant> instead of <top>. The fallback UART builds:
+#   115k: CLKS_PER_BIT = 868, i.e. 115,200 baud (100 MHz / 868 = 115,207, 0.006 % fast), for
+#         when 1 Mbaud does not work on a PC; the host tools then need --baud 115200. <out_dir> must be on a local Windows disk,
 # never inside the repo (AGENTS.md §5a). Run Vivado from <out_dir> so its scratch files land there.
 #
 # Writes to <out_dir>: the routed checkpoint (<top>_routed.dcp); reports (utilization, timing
@@ -11,11 +16,12 @@
 # Fails (non-zero exit, no bitstream) if timing is not met or, for tinytpu_top, a resource
 # ceiling of AGENTS.md is exceeded (LUT <= 5200, FF <= 6240, BRAM <= 40, DSP exactly 66).
 
-if {[llength $argv] != 2} {
-  error "usage: -tclargs <top> <out_dir>"
+if {[llength $argv] < 2 || [llength $argv] > 3} {
+  error "usage: -tclargs <top> <out_dir> \[<variant>\]"
 }
 set top  [lindex $argv 0]
 set out  [file normalize [lindex $argv 1]]
+set variant [lindex $argv 2]
 set root [file normalize [file join [file dirname [info script]] ..]]
 set part xc7a35tcpg236-1
 
@@ -27,8 +33,20 @@ if {![info exists sources($top)]} {
   error "unknown top '$top'; known: [array names sources]"
 }
 
+# Variants: name -> parameter overrides (applied to the top level with synth_design -generic).
+set variants(115k) {CLKS_PER_BIT 868}
+set generics {}
+set name $top
+if {$variant ne ""} {
+  if {![info exists variants($variant)]} {
+    error "unknown variant '$variant'; known: [array names variants]"
+  }
+  foreach {k v} $variants($variant) { lappend generics -generic $k=$v }
+  set name ${top}_$variant
+}
+
 file mkdir $out
-puts "TinyTPU build: top=$top part=$part"
+puts "TinyTPU build: top=$top part=$part variant=[expr {$variant eq "" ? "none" : "$variant ($generics)"}]"
 puts "  repo: $root"
 puts "  out:  $out"
 
@@ -37,22 +55,22 @@ foreach m $sources($top) {
 }
 read_xdc [file join $root syn basys3.xdc]
 
-synth_design -top $top -part $part
-report_utilization -file [file join $out ${top}_synth_utilization.rpt]
+synth_design -top $top -part $part {*}$generics
+report_utilization -file [file join $out ${name}_synth_utilization.rpt]
 
 opt_design
 place_design
 phys_opt_design
 route_design
 
-write_checkpoint -force [file join $out ${top}_routed.dcp]
-report_utilization -file [file join $out ${top}_utilization.rpt]
-report_utilization -hierarchical -file [file join $out ${top}_utilization_hier.rpt]
-report_timing_summary -file [file join $out ${top}_timing.rpt]
-report_timing -setup -max_paths 20 -nworst 1 -unique_pins -file [file join $out ${top}_paths.rpt]
-report_drc -file [file join $out ${top}_drc.rpt]
+write_checkpoint -force [file join $out ${name}_routed.dcp]
+report_utilization -file [file join $out ${name}_utilization.rpt]
+report_utilization -hierarchical -file [file join $out ${name}_utilization_hier.rpt]
+report_timing_summary -file [file join $out ${name}_timing.rpt]
+report_timing -setup -max_paths 20 -nworst 1 -unique_pins -file [file join $out ${name}_paths.rpt]
+report_drc -file [file join $out ${name}_drc.rpt]
 
-report_power -file [file join $out ${top}_power.rpt]
+report_power -file [file join $out ${name}_power.rpt]
 
 # Metrics (A5.2). DSP and BRAM are counted like syn/ooc.tcl (leaf cells by REF_NAME; BRAM in
 # tiles, RAMB36 = 1, RAMB18 = 1/2). Power is Vivado's vectorless estimate: compare versions with it, nothing more.
@@ -77,9 +95,10 @@ if {![regexp {Total On-Chip Power \(W\)\s*\|\s*([0-9.]+)} $power -> metric(power
     ![regexp {Dynamic \(W\)\s*\|\s*([0-9.]+)} $power -> metric(power_dynamic_w)]} {
   error "could not read the power totals from report_power"
 }
-set fh [open [file join $out ${top}_metrics.json] w]
+set fh [open [file join $out ${name}_metrics.json] w]
 puts $fh "\{"
 puts $fh "  \"top\": \"$top\","
+  puts $fh "  \"variant\": \"$variant\","
 puts $fh "  \"part\": \"$part\","
 puts $fh "  \"vivado\": \"[version -short]\","
 set keys [lsort [array names metric]]
@@ -89,7 +108,7 @@ for {set i 0} {$i < [llength $keys]} {incr i} {
 }
 puts $fh "\}"
 close $fh
-puts "TinyTPU metrics: [file join $out ${top}_metrics.json]"
+puts "TinyTPU metrics: [file join $out ${name}_metrics.json]"
 foreach k $keys { puts [format "  %-16s %s" $k $metric($k)] }
 
 # Checks: the AGENTS.md hard ceilings (tinytpu_top only), then timing. No bitstream on failure.
@@ -109,8 +128,8 @@ if {[info exists exact($top)]} {
 puts "TinyTPU timing: WNS = $metric(wns_ns) ns, WHS = $metric(whs_ns) ns"
 if {$metric(wns_ns) < 0 || $metric(whs_ns) < 0} { lappend failures "timing not met (WNS $metric(wns_ns), WHS $metric(whs_ns))" }
 if {[llength $failures]} {
-  error "TinyTPU build $top: [join $failures {; }]"
+  error "TinyTPU build $name: [join $failures {; }]"
 }
 
-write_bitstream -force [file join $out ${top}.bit]
-puts "TinyTPU bitstream: [file join $out ${top}.bit]"
+write_bitstream -force [file join $out ${name}.bit]
+puts "TinyTPU bitstream: [file join $out ${name}.bit]"

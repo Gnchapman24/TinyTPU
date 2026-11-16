@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import struct
 
+import pytest
+
 from fake_echo import FakeEchoBoard
 from tinytpu import selftest
 from tinytpu.link import Link
@@ -42,7 +44,7 @@ def test_probe_tells_the_designs_apart(monkeypatch):
     silent.drop_replies = 100                          # e.g. the FT2232H's JTAG channel
     boards = {"COM5": silent, "COM6": FakeEchoBoard(), "COM7": FakeTinyTpu()}
     monkeypatch.setattr(selftest.Link, "open",
-                        classmethod(lambda cls, port, **kw: Link(boards[port], silence=0.006, **kw)))
+                        classmethod(lambda cls, port, *_, **kw: Link(boards[port], silence=0.006, **kw)))
     lines: list[str] = []
     assert selftest.probe(["COM5", "COM6", "COM7"], out=lines.append) == ["COM7"]
     assert lines[0].startswith("COM5: no valid answer")
@@ -52,7 +54,7 @@ def test_probe_tells_the_designs_apart(monkeypatch):
 
 def test_probe_reports_nothing_found(monkeypatch):
     monkeypatch.setattr(selftest.Link, "open",
-                        classmethod(lambda cls, port, **kw: Link(FakeEchoBoard(), silence=0.006, **kw)))
+                        classmethod(lambda cls, port, *_, **kw: Link(FakeEchoBoard(), silence=0.006, **kw)))
     lines: list[str] = []
     assert selftest.probe(["COM6"], out=lines.append) == []
     assert lines[-1].startswith("No port answered")
@@ -68,3 +70,20 @@ def test_main_lists_ports(monkeypatch, capsys):
     monkeypatch.setattr(selftest, "find_ports", lambda: ["COM6", "COM7"])
     assert selftest.main(["--list-ports"]) == 0
     assert capsys.readouterr().out.split() == ["COM6", "COM7"]
+
+
+@pytest.mark.parametrize("tool", ["selftest", "bringup"])
+def test_baud_option_reaches_the_port(monkeypatch, capsys, tool):
+    import importlib
+
+    mod = importlib.import_module(f"tinytpu.{tool}")
+    seen = []
+
+    def fake_open(cls, port, baud=1_000_000, **kw):
+        seen.append((port, baud, kw.get("timeout")))
+        raise OSError("no board here")
+
+    monkeypatch.setattr(mod, "find_ports", lambda: ["COM7"])
+    monkeypatch.setattr(mod.Link, "open", classmethod(fake_open))
+    assert mod.main(["--probe", "--baud", "115200"]) == 1
+    assert seen == [("COM7", 115_200, pytest.approx(0.05 * 1e6 / 115_200))]

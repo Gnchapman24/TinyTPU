@@ -259,16 +259,49 @@ async def random_matrices(dut):
 async def selftest_script(dut):
     """The board self-test (python -m tinytpu.selftest) passes against the simulated board and
     reports a wrong result as FAIL; the example script's matmul (python -m tinytpu.example) is
-    right too."""
+    right too. The manual checks run with the testbench reading the LEDs and pressing btnC."""
     await setup(dut)
     dev, _ = make_device(dut)
     lines: list[str] = []
 
+    async def push_button() -> None:
+        await FallingEdge(dut.clk)
+        dut.btnC.value = 1
+        await ClockCycles(dut.clk, 5)
+        await FallingEdge(dut.clk)
+        dut.btnC.value = 0
+        await ClockCycles(dut.clk, 20)
+
+    asked: list[str] = []
+
+    async def read_leds() -> int:
+        return int(dut.led.value)
+
+    def ask(question: str) -> bool:
+        """Answer like a person reading the board, from the LED pins."""
+        asked.append(question)
+        led = resume(read_leds)()
+        code = (led >> 12) & 0xF
+        if "led[5] on" in question:
+            return bool(led & 0x20) and not led & 0x10 and f"= {code:04b} " in question
+        return bool(led & 0x10) and not led & 0x20 and code == 0
+
     @bridge
     def host() -> None:
-        ok = selftest.run_all(dev, seed=5, count=2, rounds=2, out=lines.append)
+        ok = selftest.run_all(dev, seed=5, count=2, rounds=2, out=lines.append, ask=ask,
+                              press=resume(push_button))
         assert ok, "\n".join(lines)
-        assert sum(line.startswith("PASS") for line in lines) == 6
+        assert sum(line.startswith("PASS") for line in lines) == 8 and len(asked) == 4
+        # A wrong answer must fail the LED check.
+        failed: list[str] = []
+        checks = selftest.Checks(dev, seed=8, out=failed.append)
+        assert not checks.run("leds", lambda: checks.leds(lambda q: "led[4] on" in q))
+        assert "error 1, error 4, error 6" in failed[0], failed
+        # Without a button press the check must fail (the halted program is still reported).
+        failed: list[str] = []
+        checks = selftest.Checks(dev, seed=7, out=failed.append)
+        assert not checks.run("button", lambda: checks.button(lambda: None))
+        assert "expected IDLE" in failed[0], failed
         # The example script's function (python -m tinytpu.example) against plain NumPy.
         r = np.random.default_rng(1)
         for signed in (False, True):

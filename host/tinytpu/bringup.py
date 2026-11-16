@@ -27,7 +27,7 @@ import sys
 import time
 from collections.abc import Callable
 
-from tinytpu.link import Link, LinkError, find_ports
+from tinytpu.link import BAUD, Link, LinkError, find_ports, scaled_timeout
 from tinytpu.packet import Cmd, Code, build_request
 
 LOOPBACK_MAX_PAYLOAD = 256
@@ -154,7 +154,7 @@ def run_all(link: Link, count: int = 100, rounds: int = 50, seed: int = 0, raw: 
     return c.summary()
 
 
-def probe(ports: list[str], out=print) -> list[str]:
+def probe(ports: list[str], out=print, baud: int = BAUD) -> list[str]:
     """Send one short ECHO to each port and return the ports that answer correctly.
 
     Needs the bring-up bitstream loaded, in packet mode (``sw[0]`` off). A port that is busy
@@ -163,7 +163,7 @@ def probe(ports: list[str], out=print) -> list[str]:
     found = []
     for port in ports:
         try:
-            with Link.open(port, timeout=0.05, retries=0) as link:
+            with Link.open(port, baud, timeout=scaled_timeout(0.05, baud), retries=0) as link:
                 link.wait_for_silence()
                 link.echo(b"probe")
             out(f"{port}: TinyTPU bring-up design answered")
@@ -184,6 +184,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--rounds", type=int, default=50, help="round trips in the throughput check")
     ap.add_argument("--seed", type=int, default=0, help="random seed")
     ap.add_argument("--raw", action="store_true", help="test raw byte echo instead (sw[0] on)")
+    ap.add_argument("--baud", type=int, default=BAUD,
+                    help="bit rate; must match the bitstream (default 1000000; the fallback builds use 115200)")
     ap.add_argument("--probe", action="store_true",
                     help="send one ECHO to each FT2232H port and report which answers, then exit")
     args = ap.parse_args(argv)
@@ -193,15 +195,15 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(ports) if ports else "no FT2232H serial port found")
         return 0
     if args.probe:
-        return 0 if probe(ports) else 1
+        return 0 if probe(ports, baud=args.baud) else 1
     port = args.port or (ports[0] if len(ports) == 1 else None)
     if port is None:
         print(f"FT2232H ports found: {ports or 'none'}. Use --port, or --probe to find the "
               "board's UART.", file=sys.stderr)
         return 2
 
-    print(f"TinyTPU bring-up test on {port}, packet mode {'off (raw)' if args.raw else 'on'}\n")
-    with Link.open(port) as link:
+    print(f"TinyTPU bring-up test on {port} at {args.baud} baud, packet mode {'off (raw)' if args.raw else 'on'}\n")
+    with Link.open(port, args.baud) as link:
         link.wait_for_silence()
         ok = run_all(link, args.count, args.rounds, args.seed, args.raw)
     return 0 if ok else 1

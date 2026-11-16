@@ -12,6 +12,13 @@ Every result is compared bit-exactly with :mod:`tinytpu.model`:
    overrun), and a request the board must refuse (NAK).
 6. ``speed``: INFER round trips; reports the time per inference.
 
+With ``--manual``, two interactive checks follow, which need someone at the board:
+
+7. ``leds``: programs halt with ISA errors 1, 4 and 6, then OK; for each, the user confirms that
+   ``led[5]`` / ``led[4]`` and the error code on ``led[15:12]`` show it.
+8. ``button``: the user presses ``btnC``, which must return the core to idle and keep every
+   memory's contents.
+
 **The test overwrites every memory on the board.** Board setup: ``tinytpu_top.bit`` loaded,
 freshly reset with ``btnC``.
 
@@ -19,6 +26,7 @@ Windows usage (host venv, see tools/setup.md)::
 
     uv run --no-default-groups python -m tinytpu.selftest --probe
     uv run --no-default-groups python -m tinytpu.selftest --port COM7
+    uv run --no-default-groups python -m tinytpu.selftest --port COM7 --manual
 """
 
 from __future__ import annotations
@@ -35,7 +43,7 @@ import numpy as np
 from tinytpu import isa, model
 from tinytpu.device import Device, DeviceError
 from tinytpu.isa import AccMode, Mem, SeqErr, SeqState
-from tinytpu.link import Link, LinkError, find_ports
+from tinytpu.link import BAUD, Link, LinkError, find_ports, scaled_timeout
 from tinytpu.packet import Cmd, Code
 
 
@@ -116,18 +124,21 @@ class Checks:
         depths = ", ".join(f"{m.name} {d}" for m, d in i.depths.items())
         return f"N = {i.n}, CLKS_PER_BIT = {i.clks_per_bit}, {depths}; state {st.state.name}"
 
+    def _pattern(self, mem: Mem, count: int) -> bytes:
+        """Random contents for ``count`` units of ``mem`` (PTAB entries keep reserved bits 0)."""
+        if mem == Mem.PTAB:
+            return b"".join(isa.ptab_entry(self.rng.randint(-(1 << 31), (1 << 31) - 1),
+                                           self.rng.randrange(1 << 16), self.rng.randrange(64))
+                            for _ in range(count))
+        return self.rng.randbytes(count * self.dev.unit_bytes(mem))
+
     def memories(self, units: int = 24) -> str:
         total = 0
         for mem in (Mem.IMEM, Mem.WBUF, Mem.ABUF, Mem.ACC, Mem.PTAB):
             depth = self.dev.info().depths[mem]
             count = min(units, depth)
             addr = self.rng.randrange(depth - count + 1)
-            if mem == Mem.PTAB:                # reserved bits must stay 0
-                data = b"".join(isa.ptab_entry(self.rng.randint(-(1 << 31), (1 << 31) - 1),
-                                               self.rng.randrange(1 << 16), self.rng.randrange(64))
-                                for _ in range(count))
-            else:
-                data = self.rng.randbytes(count * self.dev.unit_bytes(mem))
+            data = self._pattern(mem, count)
             self.dev.write(mem, addr, data)
             got = self.dev.read(mem, addr, count)
             assert got == data, f"{mem.name} {addr}..{addr + count - 1}: read back differs"
@@ -213,6 +224,52 @@ class Checks:
         ms = 1000 * (time.perf_counter() - start) / rounds
         return f"{rounds} INFERs of a {k1}-{2 * n + 1}-{o} network: {ms:.2f} ms each"
 
+    def leds(self, ask: Callable[[str], bool]) -> str:
+        """The status LEDs: halt with ISA errors 1, 4 and 6 and then OK, and ask (``ask`` returns
+        True for yes) whether the LEDs show each state."""
+        depth = self.dev.info().depths[Mem.IMEM]
+        cases = [(0, 0xFF, SeqErr.ILLEGAL_OPCODE),         # opcode 0xFF is not defined
+                 (0, 0x10, SeqErr.ZERO_COUNT),             # MATMUL with every count 0
+                 (depth - 1, isa.nop(), SeqErr.PC_OVERRUN)]  # NOP in the last slot, then off the end
+        wrong = []
+        for pc, word, err in cases:
+            self.dev.load_program([word], at=pc)
+            st = self.dev.run(pc)
+            assert st.state == SeqState.HALTED_ERROR and st.err == err, f"expected error {int(err)}, got {st}"
+            if not ask(f"led[5] on, led[4] off, and led[15:12] = {int(err):04b} (error {int(err)})?"):
+                wrong.append(f"error {int(err)}")
+        self.dev.load_program([isa.halt(1)])
+        assert self.dev.run().state == SeqState.HALTED_OK
+        if not ask("led[4] on, led[5] off, and led[15:12] all off?"):
+            wrong.append("halted OK")
+        assert not wrong, "LEDs wrong for: " + ", ".join(wrong)
+        return "led[4], led[5] and the error code on led[15:12] confirmed for errors 1, 4, 6 and OK"
+
+    def button(self, press: Callable[[], None]) -> str:
+        """``btnC`` resets the design but keeps memories: leave data in every memory and a halted
+        program, call ``press`` (which waits until the user has pressed the button), then
+        expect an idle core and unchanged memories."""
+        depths = self.dev.info().depths
+        saved = {}
+        for mem in (Mem.WBUF, Mem.ABUF, Mem.ACC, Mem.PTAB):
+            count = min(4, depths[mem])
+            addr = self.rng.randrange(depths[mem] - count + 1)
+            saved[mem] = (addr, count, self._pattern(mem, count))
+            self.dev.write(mem, addr, saved[mem][2])
+        pc = self.rng.randrange(depths[Mem.IMEM])
+        word = isa.halt(0x5A)
+        self.dev.load_program([word], at=pc)
+        saved[Mem.IMEM] = (pc, 1, isa.to_bytes(word))
+        st = self.dev.run(pc)
+        assert st.state == SeqState.HALTED_OK, f"setup program: {st}"
+        press()
+        st = self.dev.status()
+        assert st.state == SeqState.IDLE, (f"after the button the core is {st.state.name}, "
+                                           "expected IDLE (was btnC pressed?)")
+        for mem, (addr, count, data) in saved.items():
+            assert self.dev.read(mem, addr, count) == data, f"{mem.name} {addr}..: changed by the reset"
+        return "btnC returned the core to IDLE; every memory kept its contents"
+
     # ---------------------------------------------------------------------------------------------
 
     def summary(self) -> bool:
@@ -226,8 +283,11 @@ class Checks:
         return not failed
 
 
-def run_all(dev: Device, seed: int = 0, count: int = 6, rounds: int = 20, out=print) -> bool:
-    """Run every check and return True if all passed."""
+def run_all(dev: Device, seed: int = 0, count: int = 6, rounds: int = 20, out=print,
+            ask: Callable[[str], bool] | None = None, press: Callable[[], None] | None = None) -> bool:
+    """Run every check and return True if all passed. The manual checks run last: ``leds`` with
+    ``ask`` (asks the user a yes/no question), ``button`` with ``press`` (returns once ``btnC``
+    has been pressed)."""
     c = Checks(dev, seed, out)
     if not c.run("info", c.info):
         return c.summary()                    # nothing else can work without INFO
@@ -236,10 +296,14 @@ def run_all(dev: Device, seed: int = 0, count: int = 6, rounds: int = 20, out=pr
     c.run("network", c.network)
     c.run("errors", c.errors)
     c.run("speed", lambda: c.speed(rounds))
+    if ask is not None:
+        c.run("leds", lambda: c.leds(ask))
+    if press is not None:
+        c.run("button", lambda: c.button(press))
     return c.summary()
 
 
-def probe(ports: list[str], out=print) -> list[str]:
+def probe(ports: list[str], out=print, baud: int = BAUD) -> list[str]:
     """Send INFO to each port; return the ports where the TinyTPU design answers.
 
     A port that answers INFO with NAK ``UNKNOWN_CMD`` runs the bring-up design instead. A port
@@ -248,7 +312,7 @@ def probe(ports: list[str], out=print) -> list[str]:
     found = []
     for port in ports:
         try:
-            with Link.open(port, timeout=0.05, retries=0) as link:
+            with Link.open(port, baud, timeout=scaled_timeout(0.05, baud), retries=0) as link:
                 link.wait_for_silence()
                 reply = link.transact(Cmd.INFO)
             if reply.code == Code.ACK and len(reply.payload) == 16:
@@ -274,6 +338,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--count", type=int, default=6, help="random matmuls in the matmul check")
     ap.add_argument("--rounds", type=int, default=20, help="INFER round trips in the speed check")
     ap.add_argument("--seed", type=int, default=0, help="random seed")
+    ap.add_argument("--manual", action="store_true",
+                    help="finish with interactive checks at the board: confirm LEDs, press btnC")
+    ap.add_argument("--baud", type=int, default=BAUD,
+                    help="bit rate; must match the bitstream (default 1000000; the fallback builds use 115200)")
     args = ap.parse_args(argv)
 
     ports = find_ports()
@@ -281,17 +349,25 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(ports) if ports else "no FT2232H serial port found")
         return 0
     if args.probe:
-        return 0 if probe(ports) else 1
+        return 0 if probe(ports, baud=args.baud) else 1
     port = args.port or (ports[0] if len(ports) == 1 else None)
     if port is None:
         print(f"FT2232H ports found: {ports or 'none'}. Use --port, or --probe to find the board's UART.",
               file=sys.stderr)
         return 2
 
-    print(f"TinyTPU self-test on {port} (overwrites the board's memories)\n")
-    with Link.open(port) as link:
+    print(f"TinyTPU self-test on {port} at {args.baud} baud (overwrites the board's memories)\n")
+    with Link.open(port, args.baud) as link:
         link.wait_for_silence()
-        ok = run_all(Device(link), args.seed, args.count, args.rounds)
+        ask = press = None
+        if args.manual:
+            def ask(question: str) -> bool:
+                return input(f"\n>>> On the board: {question} [y/n] ").strip().lower().startswith("y")
+
+            def press() -> None:
+                input("\n>>> Press and release btnC on the board, then press Enter here: ")
+                link.wait_for_silence()
+        ok = run_all(Device(link), args.seed, args.count, args.rounds, ask=ask, press=press)
     return 0 if ok else 1
 
 

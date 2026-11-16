@@ -25,7 +25,7 @@ import numpy as np
 from tinytpu import isa, model
 from tinytpu.device import Device
 from tinytpu.isa import AccMode, SeqState
-from tinytpu.link import Link
+from tinytpu.link import BAUD, Link
 
 
 def matmul_on_board(dev: Device, x: np.ndarray, w: np.ndarray, act_signed: bool) -> np.ndarray:
@@ -71,13 +71,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--n", type=int, default=20, help="columns of W")
     ap.add_argument("--signed", action="store_true", help="INT8 activations instead of UINT8")
     ap.add_argument("--seed", type=int, default=0, help="random seed")
+    ap.add_argument("--baud", type=int, default=BAUD,
+                    help="bit rate; must match the bitstream (default 1000000; the fallback builds use 115200)")
     args = ap.parse_args(argv)
 
     rng = np.random.default_rng(args.seed)
     w = rng.integers(-127, 128, size=(args.k, args.n))
     x = rng.integers(-128, 128, size=(args.m, args.k)) if args.signed else rng.integers(0, 256, size=(args.m, args.k))
 
-    with Link.open(args.port) as link:
+    with Link.open(args.port, args.baud) as link:
         dev = Device(link)
         print(f"Board: N = {dev.info().n}; computing ({args.m} x {args.k}) @ ({args.k} x {args.n})")
         y = matmul_on_board(dev, x, w, args.signed)
