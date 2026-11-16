@@ -29,7 +29,9 @@ There are four bitstreams. All are built at 100 MHz and met timing. They are wri
 
 ## 0. Set up PowerShell (every new window)
 
-Paste this, with your WSL user name in the path:
+On a PC other than the one that built the bitstreams, such as a laptop, first do the one-time [setup on another PC](#setup-on-another-pc).
+
+Paste this. The first line goes to the repo folder: on the build PC that is the WSL path with your user name; on another PC it is your clone, e.g. `Set-Location $HOME\TinyTPU`.
 
 ```powershell
 Set-Location \\wsl.localhost\Ubuntu\home\<user>\Projects\FPGA\TinyTPU
@@ -43,6 +45,57 @@ tpy -m tinytpu.selftest --help | Select-Object -First 3
 - `$log` is a folder on your desktop for the results. Each command below ends with `*>> "$log\<file>.txt"`, which saves everything it prints there.
   - Leave that ending off if you'd rather watch the output live.
   - The manual checks in step 4.4 need the console, so they use `Tee-Object` instead, which shows the output and saves it.
+
+## Setup on another PC
+
+The board can be tested from any Windows PC, such as a laptop. It needs four things, once:
+- the repo
+- the project's Python environment
+- a Vivado that can program the board (the free **Lab Edition** is enough)
+- the bitstreams
+
+None of this needs WSL.
+
+1. **Git:** in PowerShell, `git --version`. If it isn't found, install Git for Windows: `winget install --id Git.Git -e`. Then open a **new** PowerShell window.
+2. **The repo**, cloned outside OneDrive-synced folders:
+
+   ```powershell
+   git clone https://github.com/Gnchapman24/TinyTPU $HOME\TinyTPU
+   ```
+
+3. **uv and Python 3.12:**
+
+   ```powershell
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+
+   Open a **new** PowerShell window, so `uv` is on the path, then run:
+
+   ```powershell
+   Set-Location $HOME\TinyTPU
+   $env:UV_PROJECT_ENVIRONMENT = "$env:LOCALAPPDATA\tinytpu\venv"
+   uv python install 3.12
+   uv sync --no-default-groups --locked
+   ```
+
+4. **Vivado Lab Edition 2025.2**, for programming. The full Vivado 2025.2 also works.
+   - Download it from AMD's Vivado download page (an AMD account is needed), and install it with **cable drivers** selected.
+   - `.\syn\vivado.ps1 -Program` looks for it under `C:\AMDDesignTools\2025.2` or `C:\Xilinx`.
+5. **The bitstreams:** copy `tinytpu-bitstreams.zip` from the build PC's desktop, then unpack it where the scripts expect builds:
+
+   ```powershell
+   Expand-Archive tinytpu-bitstreams.zip "$env:LOCALAPPDATA\tinytpu" -Force
+   Get-ChildItem "$env:LOCALAPPDATA\tinytpu\vivado" -Recurse -Filter *.bit
+   ```
+
+   The second command must list four `.bit` files.
+6. **Script permission:** if `.\syn\vivado.ps1` is refused with "running scripts is disabled on this system", run this once:
+
+   ```powershell
+   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+   ```
+
+Then continue with [step 0](#0-set-up-powershell-every-new-window), using `Set-Location $HOME\TinyTPU`. The board's FTDI serial driver comes with Windows Update or the Vivado cable drivers. Step 2 checks it.
 
 ## 1. Connect and program (H0.4)
 

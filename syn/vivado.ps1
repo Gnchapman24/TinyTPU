@@ -25,7 +25,13 @@ $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 $version = (Select-String -Path (Join-Path $repo "tools\versions.env") -Pattern '^VIVADO_VERSION=(.+)$').Matches[0].Groups[1].Value
 $vivado = "C:\AMDDesignTools\$version\Vivado\bin\vivado.bat"
-if (-not (Test-Path $vivado)) { throw "Vivado $version not found at $vivado" }
+if (-not (Test-Path $vivado) -and $Program) {
+    # Programming also works with Vivado Lab Edition (programming only, e.g. on a laptop).
+    $lab = Get-ChildItem -Path "C:\AMDDesignTools\$version", "C:\Xilinx" -Recurse -Depth 4 -Filter vivado_lab.bat `
+               -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*$version*" } | Select-Object -First 1
+    if ($lab) { $vivado = $lab.FullName }
+}
+if (-not (Test-Path $vivado)) { throw "Vivado $version not found at $vivado (for -Program, Vivado Lab Edition $version also works)" }
 
 if ($Variant -and $Ooc) { throw "-Variant applies to full builds only" }
 $name = $Top + $(if ($Variant) { "_$Variant" } else { "" })
