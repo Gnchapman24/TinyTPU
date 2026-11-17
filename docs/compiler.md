@@ -1,7 +1,7 @@
 # Host compiler
 
-!!! note "Draft (task J7.1)"
-    This page is the design for Phase 7 in `TASKS.md`. Nothing on it is implemented yet. Choices marked **Proposed** are waiting for approval; [Open choices](#open-choices) lists them. Everything else follows from decisions already recorded in AGENTS.md.
+!!! note "Design (task J7.1, approved 2026-11-16)"
+    This page is the design for Phase 7 in `TASKS.md`; the modules are being built task by task. The choices made with it are listed under [Decisions](#decisions).
 
 The compiler turns a small neural network, written as NumPy arrays, into everything the board needs to run it: a program, weight tiles and per-channel parameters. The runtime then loads those onto the board once and runs inferences with one `INFER` round trip per batch.
 
@@ -81,7 +81,7 @@ Each layer's input `x` is represented as `x ≈ s_x · q_x`.
 - **Hidden layer outputs:** from the float activations of the calibration inputs (level 1).
   - After a ReLU: UINT8, `s_y = max(y) / 255`. The next layer runs with `act_signed = 0`.
   - Without one: INT8, `s_y = max|y| / 127`. The next layer runs with `act_signed = 1`.
-- **Proposed:** the calibration statistic is the maximum. `calibration="percentile"` with `percentile=99.99` is an option, for activations with rare outliers.
+- The calibration statistic is the maximum. `calibration="percentile"` with `percentile=99.99` is an option, for activations with rare outliers.
 - **A layer whose calibration activations are all zero** gets scale 1, so the arithmetic stays defined. A warning is printed.
 
 ### Biases
@@ -158,9 +158,9 @@ That is 2L instructions, so up to 64 layers fit in the default 128-entry `IMEM`.
 
 The program's `m` field is fixed, so a compiled model has a fixed batch size B.
 
-- **Proposed:** by default, B is the largest batch that fits every limit below. In practice that is almost always INFER's 4096-byte payload. `compile_model(..., batch=B)` sets it explicitly.
+- By default, B is the largest batch that fits every limit below. In practice that is almost always INFER's 4096-byte payload. `compile_model(..., batch=B)` sets it explicitly.
 - The runtime splits any number of inputs into batches of B and pads the last one with zeros. The padding costs UART time only on that last batch.
-- **Proposed:** version 1 always uses `INFER`. A larger batch, sent with `WRITE` + `RUN` + `READ` (three round trips), could be added later; it wouldn't be faster on the wire.
+- Version 1 always uses `INFER`. A larger batch, sent with `WRITE` + `RUN` + `READ` (three round trips), could be added later; it wouldn't be faster on the wire.
 
 ### Limit checks
 
@@ -182,7 +182,7 @@ The generated program is then checked with `model.range_error` and `isa.decode_e
 
 ### HALT tag
 
-- **Proposed:** the `HALT` code is a 16-bit tag: the low 16 bits of a hash of the program, tiles and parameters.
+- The `HALT` code is a 16-bit tag: the low 16 bits of a hash of the program, tiles and parameters.
 - After every `INFER`, the runtime checks that the board halted OK **with that tag**. This catches running against a different program, for example after `selftest` has overwritten the memories.
 - It can't detect a changed `WBUF` under an unchanged program. `Runner.verify()` reads every memory back and compares, for when that matters.
 
@@ -202,7 +202,7 @@ sim = prog.load(model.Machine(...))  # the same interface on the reference model
 
 ### Compiled file
 
-- **Proposed:** a compiled model is one `.npz`, read with `allow_pickle=False`:
+- A compiled model is one `.npz`, read with `allow_pickle=False`:
   - `program`: `(2L, 16)` uint8, the instruction words as sent on the wire
   - `tiles`: `(T, N, N)` int8
   - `ptab`: `(C, 8)` uint8, the PTAB entries as sent on the wire
@@ -230,7 +230,7 @@ Without `--port`, it stops after step 3 and reports the float and integer accura
 
 ### Model size
 
-**Proposed:** 784-128-10. The figures are estimates for N = 8, at 1 Mbaud, with the latency timer at 1 ms:
+784-128-10. The figures are estimates for N = 8, at 1 Mbaud, with the latency timer at 1 ms:
 
 | Model | Weight tiles | Channels | B | Per INFER on the wire | Per image | Expected accuracy |
 |---|---|---|---|---|---|---|
@@ -251,14 +251,14 @@ Without `--port`, it stops after step 3 and reports the float and integer accura
 
 As with the rest of the project, each test is checked against injected bugs (a wrong rounding, an off-by-one region size, a swapped tile order) before it counts as done.
 
-## Open choices
+## Decisions
 
-These need approval before A7.2 starts:
+All approved on 2026-11-16 (J7.1):
 
-1. **MNIST model size:** 784-128-10 (proposed), or 196-64-10 on 14×14 images.
-2. **Calibration statistic:** maximum by default, with percentile as an option (proposed), or percentile by default.
-3. **Batches:** `INFER` only in version 1 (proposed), or also `WRITE` + `RUN` + `READ` for larger batches.
-4. **Default batch size:** the largest that fits (proposed), or 1.
-5. **HALT tag** from a hash of the compiled model, checked after every `INFER` (proposed).
-6. **Compiled file:** one `.npz` with a JSON metadata string (proposed).
-7. **MNIST mirror:** torchvision's primary mirror, `https://ossci-datasets.s3.amazonaws.com/mnist/` (proposed), with SHA-256 hashes pinned when the downloader is written.
+1. **MNIST model size:** 784-128-10. 196-64-10 on 14×14 images is an option (`--size 14`).
+2. **Calibration statistic:** the maximum by default; a percentile is an option.
+3. **Batches:** `INFER` only in version 1.
+4. **Default batch size:** the largest that fits.
+5. **HALT tag:** from a hash of the compiled model, checked after every `INFER`.
+6. **Compiled file:** one `.npz` with a JSON metadata string.
+7. **MNIST mirror:** torchvision's primary mirror, `https://ossci-datasets.s3.amazonaws.com/mnist/`, with SHA-256 hashes pinned when the downloader is written.

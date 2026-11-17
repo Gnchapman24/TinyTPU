@@ -334,7 +334,13 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
   - **Layers:** Dense + optional ReLU only. Each hidden layer is one `MATMUL` (bias mode) plus one `REQUANT`. No convolutions: the ISA has no strides.
   - **Output:** the last layer is `MATMUL` only, and `INFER` reads its raw INT32 logits from `ACC`. The host dequantizes them, and does argmax.
   - **Demo:** MNIST, with a small MLP trained in pure NumPy. The dataset is downloaded once into a cache outside the repo. Tests and CI never download it.
-  - Details that are still open (calibration method, memory allocation, batch handling, compiled-file format, MNIST source and model size) are settled in `docs/compiler.md` (task J7.1).
+  - **Design approved 2026-11-16 (J7.1); full spec in `docs/compiler.md`:**
+    - Quantization: per-output-channel weight scales (`max|w| / 127`), one activation scale per layer input from calibration (maximum by default, percentile optional), UINT8 after a ReLU and INT8 otherwise. `M`/`s`: the largest `s` ≤ 63 with `round(r · 2**s)` ≤ 65535. Float-to-integer rounding is ties away from zero.
+    - Memory: weights and PTAB packed by layer from 0; every layer uses ACC from row 0; ABUF alternates between two regions, with the input in the first.
+    - Batch size is fixed at compile time; the default is the largest that fits. Version 1 runs every batch with one `INFER`.
+    - The `HALT` code is a 16-bit hash of the compiled model, checked after every `INFER`.
+    - A compiled model is one `.npz` (`allow_pickle=False`) with a JSON metadata string.
+    - MNIST demo: 784-128-10 (196-64-10 optional), downloaded from torchvision's mirror `https://ossci-datasets.s3.amazonaws.com/mnist/` with pinned SHA-256 hashes.
 
 ## 4. Repository layout (planned)
 
