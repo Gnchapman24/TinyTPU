@@ -28,17 +28,20 @@ Example:
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+import json
+import struct
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 
-from tinytpu import isa, model
-from tinytpu.isa import AccMode, Mem, SeqErr
+from tinytpu import isa, model, quant
+from tinytpu.isa import AccMode, Mem, SeqErr, SeqState
 from tinytpu.quant import QModel
 
 if TYPE_CHECKING:
-    from tinytpu.device import Info
+    from tinytpu.device import Device, Info
 
 MAX_PAYLOAD = 4096
 """Largest packet payload in bytes (``docs/uart_protocol.md``)."""
@@ -48,6 +51,8 @@ STATUS_BYTES = 8
 """Bytes of an ``INFER`` reply before the output data (the status block)."""
 MAX_COUNT = (1 << isa.COUNT_W) - 1
 """Largest ``kt``, ``nt`` or ``m`` (12-bit counts)."""
+FILE_FORMAT = 1
+"""Version of the compiled-model file (:meth:`Compiled.save`)."""
 
 
 class FitError(ValueError):
@@ -192,6 +197,71 @@ class Compiled:
         """The parameter-table entries in wire form (8 bytes each)."""
         return b"".join(isa.ptab_entry(int(b), int(m), int(s))
                         for b, m, s in zip(self.ptab_bias, self.ptab_mult, self.ptab_shift))
+
+    # Runtime ------------------------------------------------------------------------------------
+
+    def load(self, backend: Device | model.Machine) -> Runner:
+        """Write the image to a board (or a ``model.Machine``) and return a :class:`Runner`.
+
+        Raises:
+            ValueError: If the backend's N or memory depths differ from the target's, or its
+                packet limit is smaller.
+        """
+        runner = Runner(self, _backend(backend))
+        runner.write_image()
+        return runner
+
+    def simulator(self) -> Runner:
+        """Load the image into a fresh ``model.Machine`` of the target's size."""
+        return self.load(model.Machine(n=self.target.n, depths=dict(self.target.depths)))
+
+    # File ---------------------------------------------------------------------------------------
+
+    def save(self, path: str | Path) -> None:
+        """Save as one ``.npz`` (NumPy adds the suffix if ``path`` has none)."""
+        t = self.target
+        meta = {
+            "format": FILE_FORMAT,
+            "target": {"n": t.n, "depths": {Mem(m).name: d for m, d in t.depths.items()},
+                       "max_payload": t.max_payload},
+            "batch": self.batch,
+            "layers": [asdict(p) for p in self.layers],
+            "in_addr": self.in_addr, "in_vectors": self.in_vectors,
+            "out_addr": self.out_addr, "out_rows": self.out_rows, "tag": self.tag,
+            "input_scale": self.input_scale,
+            "out_scale": None if self.out_scale is None else [float(v) for v in self.out_scale],
+        }
+        program = np.frombuffer(b"".join(isa.to_bytes(w) for w in self.program), dtype=np.uint8)
+        ptab = np.frombuffer(self.ptab_bytes(), dtype=np.uint8)
+        np.savez(path, meta=np.array(json.dumps(meta)), program=program.reshape(-1, isa.INSTR_BYTES),
+                 tiles=self.tiles, ptab=ptab.reshape(-1, 8))
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> Compiled:
+        """Read a file written by :meth:`save`.
+
+        Raises:
+            ValueError: If the format is unknown or the image doesn't match its tag (corrupted).
+        """
+        with np.load(path, allow_pickle=False) as f:
+            meta = json.loads(str(f["meta"]))
+            program_bytes, tiles, ptab = f["program"], f["tiles"], f["ptab"].tobytes()
+        if meta.get("format") != FILE_FORMAT:
+            raise ValueError(f"unknown compiled-model format {meta.get('format')!r} (expected {FILE_FORMAT})")
+        mt = meta["target"]
+        target = Target(mt["n"], {Mem[k]: v for k, v in mt["depths"].items()}, mt["max_payload"])
+        program = [isa.from_bytes(bytes(row)) for row in program_bytes]
+        entries = [struct.unpack("<iHBx", ptab[i:i + 8]) for i in range(0, len(ptab), 8)]
+        bias, mult, shift = (np.array([e[j] for e in entries], dtype=np.int64) for j in range(3))
+        tiles = np.asarray(tiles, dtype=np.int8)
+        if program[-1] != isa.halt(meta["tag"]) or _tag(program[:-1], tiles, ptab) != meta["tag"]:
+            raise ValueError(f"{path}: the image does not match its tag (corrupted file?)")
+        return cls(
+            target=target, batch=meta["batch"], layers=[LayerPlan(**p) for p in meta["layers"]],
+            program=program, tiles=tiles, ptab_bias=bias, ptab_mult=mult, ptab_shift=shift,
+            in_addr=meta["in_addr"], in_vectors=meta["in_vectors"], out_addr=meta["out_addr"],
+            out_rows=meta["out_rows"], tag=meta["tag"], input_scale=meta["input_scale"],
+            out_scale=None if meta["out_scale"] is None else np.array(meta["out_scale"]))
 
 
 # ------------------------------------------------------------------------------------------------
@@ -352,3 +422,147 @@ def compile_model(q: QModel, target: Target, batch: int | None = None) -> Compil
         in_addr=0, in_vectors=batch * kts[0], out_addr=0, out_rows=batch * nts[-1], tag=tag,
         input_scale=q.input_scale, out_scale=None if q.out_scale is None else np.array(q.out_scale))
 
+
+# ------------------------------------------------------------------------------------------------
+# Runtime
+# ------------------------------------------------------------------------------------------------
+
+class RunError(RuntimeError):
+    """A run did not end the way the compiled program does (``HALT`` with its tag).
+
+    Attributes:
+        status: The status the board (or ``Machine``) reported.
+    """
+
+    def __init__(self, message: str, status: model.Status):
+        self.status = status
+        super().__init__(message)
+
+
+class _MachineBackend:
+    """``model.Machine`` behind the runtime's backend interface."""
+
+    def __init__(self, m: model.Machine):
+        self.m = m
+
+    def target(self) -> Target:
+        return Target(self.m.n, dict(self.m.depths), MAX_PAYLOAD)
+
+    def write_image(self, c: Compiled) -> None:
+        self.m.load_program(c.program)
+        self.m.load_weights(c.tiles)
+        self.m.load_params(c.ptab_bias, c.ptab_mult, c.ptab_shift)
+
+    def infer(self, c: Compiled, vecs: np.ndarray) -> tuple[model.Status, np.ndarray]:
+        self.m.load_vectors(vecs, at=c.in_addr)
+        status = self.m.run()
+        return status, self.m.acc[c.out_addr:c.out_addr + c.out_rows].copy()
+
+    def read_image(self, c: Compiled) -> tuple[bytes, bytes, bytes]:
+        m, words = self.m, len(c.program)
+        program = b"".join(isa.to_bytes(int(w)) for w in m.imem[:words])
+        ptab = b"".join(isa.ptab_entry(int(b), int(mu), int(s)) for b, mu, s in
+                        zip(m.ptab_bias[:len(c.ptab_bias)], m.ptab_mult[:len(c.ptab_bias)],
+                            m.ptab_shift[:len(c.ptab_bias)]))
+        return program, m.wbuf[:len(c.tiles)].tobytes(), ptab
+
+
+class _DeviceBackend:
+    """A :class:`tinytpu.device.Device` (the board, or the simulated board)."""
+
+    def __init__(self, dev: Device):
+        self.dev = dev
+
+    def target(self) -> Target:
+        return Target.from_info(self.dev.info())
+
+    def write_image(self, c: Compiled) -> None:
+        self.dev.load_program(c.program)
+        self.dev.load_weights(c.tiles)
+        self.dev.write(Mem.PTAB, 0, c.ptab_bytes())
+
+    def infer(self, c: Compiled, vecs: np.ndarray) -> tuple[model.Status, np.ndarray]:
+        status, data = self.dev.infer(vecs.astype(np.uint8).tobytes(), in_addr=c.in_addr, out_mem=Mem.ACC,
+                                      out_addr=c.out_addr, out_count=c.out_rows)
+        return status, np.frombuffer(data, dtype="<i4").reshape(c.out_rows, c.target.n).astype(np.int32)
+
+    def read_image(self, c: Compiled) -> tuple[bytes, bytes, bytes]:
+        return (self.dev.read(Mem.IMEM, 0, len(c.program)), self.dev.read(Mem.WBUF, 0, len(c.tiles)),
+                self.dev.read(Mem.PTAB, 0, len(c.ptab_bias)))
+
+
+def _backend(b: Device | model.Machine) -> _MachineBackend | _DeviceBackend:
+    return _MachineBackend(b) if isinstance(b, model.Machine) else _DeviceBackend(b)
+
+
+class Runner:
+    """A compiled model loaded on a backend: runs inferences in batches.
+
+    Made by :meth:`Compiled.load` or :meth:`Compiled.simulator`.
+
+    Args:
+        compiled: The compiled model.
+        backend: Internal backend wrapper (``Device`` or ``model.Machine``).
+
+    Raises:
+        ValueError: If the backend's N or memory depths differ from the target's, or its packet
+            limit is smaller.
+    """
+
+    def __init__(self, compiled: Compiled, backend: _MachineBackend | _DeviceBackend):
+        self.compiled = compiled
+        self.backend = backend
+        have, want = backend.target(), compiled.target
+        if have.n != want.n or have.depths != want.depths or have.max_payload < want.max_payload:
+            raise ValueError(f"compiled for N = {want.n}, depths {_depths(want)}, payload {want.max_payload}; "
+                             f"the board has N = {have.n}, depths {_depths(have)}, payload {have.max_payload}")
+
+    def write_image(self) -> None:
+        """Write the program, weight tiles and parameters (done by :meth:`Compiled.load`)."""
+        self.backend.write_image(self.compiled)
+
+    def verify(self) -> bool:
+        """Read the program, weights and parameters back; True if they are all intact."""
+        c = self.compiled
+        program, tiles, ptab = self.backend.read_image(c)
+        return (program == b"".join(isa.to_bytes(w) for w in c.program) and tiles == c.tiles.tobytes()
+                and ptab == c.ptab_bytes())
+
+    def infer_int(self, qx: np.ndarray) -> np.ndarray:
+        """Integer inputs ``(rows, K)`` in, INT32 accumulators ``(rows, Nout)`` out, any number of
+        rows: split into batches, the last one padded with zeros.
+
+        Raises:
+            RunError: If a run doesn't halt OK with the program's tag.
+        """
+        c = self.compiled
+        x = np.asarray(qx, dtype=np.int64)
+        lo, hi = (-128, 127) if c.input_signed else (0, 255)
+        if x.ndim != 2 or x.shape[1] != c.k_in:
+            raise ValueError(f"inputs must have shape (rows, {c.k_in}), got {x.shape}")
+        if x.size and (x.min() < lo or x.max() > hi):
+            raise ValueError(f"inputs must be in {lo}..{hi}")
+        out = np.zeros((len(x), c.n_out), dtype=np.int32)
+        for start in range(0, len(x), c.batch):
+            chunk = x[start:start + c.batch]
+            padded = np.zeros((c.batch, c.k_in), dtype=np.int64)
+            padded[:len(chunk)] = chunk
+            status, rows = self.backend.infer(c, model.pack_activations(padded, c.target.n))
+            if status.state != SeqState.HALTED_OK or status.halt_code != c.tag:
+                raise RunError(f"expected HALT with tag {c.tag:#06x}, got {status} (is another program loaded?)",
+                               status)
+            out[start:start + len(chunk)] = model.unpack_acc(rows, c.batch, c.n_out)[:len(chunk)]
+        return out
+
+    def infer(self, x: np.ndarray) -> np.ndarray:
+        """Float inputs ``(rows, K)`` in, float outputs ``(rows, Nout)`` out: quantized, run with
+        :meth:`infer_int`, then dequantized (and the last layer's ReLU applied)."""
+        c = self.compiled
+        if c.input_scale is None or c.out_scale is None:
+            raise ValueError("this model has no scales (built from integer layers); use infer_int")
+        qx = quant.quantize_input(x, c.input_scale, c.input_signed, c.k_in)
+        return quant.dequantize(self.infer_int(qx), c.out_scale, c.last_relu)
+
+
+def _depths(t: Target) -> str:
+    return ", ".join(f"{Mem(m).name} {d}" for m, d in sorted(t.depths.items()))

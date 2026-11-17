@@ -349,6 +349,11 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
     - Generated words are checked with `isa.decode_error` and `model.range_error` before they are returned.
     - `tb/test_compiler.py` runs images on `model.Machine`; for 784-128-10 at N = 8 the default batch is 5 (1,600 tiles, 144 channels), as `docs/compiler.md` says.
     - ABUF regions are reused by design: after a run, each region holds only the last hidden layer written to it.
+  - **Implemented (A7.4):** the runtime, in `tinytpu.compiler`.
+    - `Compiled.load(dev_or_machine)` writes the image and returns a `Runner`; `Compiled.simulator()` does the same on a fresh `model.Machine`. Both backends share one interface, which is how board and reference results are compared.
+    - `Runner.infer` / `infer_int` split any number of rows into batches (the last one zero-padded), and raise `RunError` unless every run halts OK with the program's tag. `Runner.verify()` reads the image back.
+    - `Compiled.save` / `from_file`: one `.npz`, `allow_pickle=False`, format 1; loading recomputes the tag and refuses a corrupted file.
+    - `quant.quantize_input` / `quant.dequantize` are shared by `QModel` and the runtime, so the two can't drift apart. Inputs are clipped before rounding, so huge values saturate instead of failing.
 
 ## 4. Repository layout (planned)
 
@@ -444,6 +449,7 @@ The Makefile puts the OSS CAD Suite `bin/` on `PATH`, and runs Python tools via 
      - Prove with `abc pdr`: it proves for all time without hand-written induction invariants. Cover with `smtbmc`.
      - Use the smallest legal parameters (e.g. `CLKS_PER_BIT = 4`).
    - **Check every proof and testbench against injected bugs** before calling it done: break the RTL in a few plausible ways and confirm both formal and simulation fail. A proof that never fails proves nothing.
+     - Never run other tests while a bug is injected. Sources are edited in place, so a simulation or test started at the same time can import the broken file and report a false failure (seen in A7.4).
   - For registered outputs, also check that driving new inputs does *not* change the outputs before the clock edge. Otherwise a combinational pass-through bug can look correct.
    - **Parameter-dependent assertions:** an assertion that is always true for some parameter values (e.g. a counter range check when the limit is a power of two) triggers Verilator `-Wall` warnings in test builds. Put it in a generate-`if` that only exists when it can fail.
    - **Decided:** the formal front-end is **yosys-slang**, which reads SystemVerilog through the slang compiler and is bundled in the OSS CAD Suite.

@@ -123,6 +123,7 @@ from tinytpu import compiler
 target = compiler.Target.from_info(dev.info())   # or compiler.Target.default(n=8)
 prog = compiler.compile_model(qnet, target)      # batch size: the largest that fits (below)
 prog.save("mnist.npz")
+prog = compiler.Compiled.from_file("mnist.npz")   # e.g. on another PC
 ```
 
 `Target` holds N and every memory depth. `Target.default(n)` uses the `docs/memory_map.md` depths, so a model can be compiled without a board and loaded later. Loading checks the target against the board's `INFO`.
@@ -184,7 +185,7 @@ The generated program is then checked with `model.range_error` and `isa.decode_e
 
 - The `HALT` code is a 16-bit tag: the low 16 bits of a hash of the program, tiles and parameters.
 - After every `INFER`, the runtime checks that the board halted OK **with that tag**. This catches running against a different program, for example after `selftest` has overwritten the memories.
-- It can't detect a changed `WBUF` under an unchanged program. `Runner.verify()` reads every memory back and compares, for when that matters.
+- It can't detect a changed `WBUF` under an unchanged program. `Runner.verify()` reads the program, the weights and the parameters back and compares them, for when that matters.
 
 ## Runtime
 
@@ -193,12 +194,14 @@ runner = prog.load(dev)              # writes IMEM, WBUF and PTAB; checks N and 
 logits = runner.infer(x)             # (any number, 784) float -> (that number, 10) float
 acc = runner.infer_int(qx)           # integers in, INT32 accumulators out (for bit-exact checks)
 
-sim = prog.load(model.Machine(...))  # the same interface on the reference model
+sim = prog.simulator()               # the same interface on a fresh model.Machine
 ```
 
 - **Two backends, one interface:** a `Device` (the board, or the simulated board in cocotb) or a `model.Machine`. This is how levels 3 and 4 are compared.
 - `infer` quantizes the input with the model's input scale (round, then clamp to the input type's range), packs it into canonical vectors, runs one `INFER` per batch, unpacks the `ACC` rows, drops the padding, and dequantizes.
-- An `INFER` whose status is not HALTED_OK with the expected tag raises an error.
+- An `INFER` whose status is not HALTED_OK with the expected tag raises `compiler.RunError`, which carries the status.
+- Loading refuses a backend whose N or memory depths differ from the target's, or whose packet limit is smaller.
+- `Compiled.from_file` recomputes the tag from the image and refuses a file that doesn't match it.
 
 ### Compiled file
 

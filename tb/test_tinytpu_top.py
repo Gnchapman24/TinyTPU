@@ -8,7 +8,8 @@ on the board, only at simulated speed. Expected results come from tinytpu.model 
 matmul / requant math and Machine).
 
 Tests: INFO; a two-layer network with sizes that are not multiples of N, in both activation
-modes, uploaded with WRITE, run with RUN and with INFER; random matrices; the board self-test
+modes, uploaded with WRITE, run with RUN and with INFER; a model compiled with tinytpu.compiler
+and run through its runtime; random matrices; the board self-test
 script (tinytpu.selftest) itself; RESET while running; and the link's recovery through the real
 board (a corrupted request, a lost reply). They run with
 CLKS_PER_BIT = 8 for speed, and a shorter set at the real CLKS_PER_BIT = 100.
@@ -29,7 +30,7 @@ from cocotb.task import bridge, resume
 from cocotb.triggers import ClockCycles, FallingEdge
 from cocotb_tools.runner import get_runner
 
-from tinytpu import example, isa, model, selftest
+from tinytpu import compiler, example, isa, model, nn, quant, selftest
 from tinytpu.device import Device
 from tinytpu.isa import AccMode, Mem, SeqErr, SeqState
 from tinytpu.link import Link
@@ -149,6 +150,26 @@ def host_network(dev: Device, seed: int, act_signed: bool) -> None:
         assert got2.tolist() == reference(x2).tolist()
 
 
+def host_compiled_model(dev: Device, seed: int) -> None:
+    """A float model, quantized and compiled for the board's INFO, loaded and run in batches
+    through the compiler's runtime: bit-exact against the same image on model.Machine."""
+    rng = np.random.default_rng(seed)
+    sizes, relus = [2 * N + 3, N + 5, 7], [True, False]
+    net = nn.Model([nn.Dense(rng.normal(0, 0.4, (k, m)), rng.normal(0, 0.1, m), relu=r)
+                    for k, m, r in zip(sizes, sizes[1:], relus)])
+    q = quant.quantize(net, rng.uniform(0, 1, (200, sizes[0])))
+    target = compiler.Target.from_info(dev.info())
+    assert compiler.compile_model(q, target).batch == compiler.max_batch(q, target)
+    c = compiler.compile_model(q, target, batch=2)
+    runner = c.load(dev)
+    assert runner.verify()
+    x = rng.uniform(0, 1, (5, sizes[0]))                      # three INFERs, the last one padded
+    qx = q.quantize_input(x)
+    assert np.array_equal(runner.infer_int(qx), c.simulator().infer_int(qx))
+    assert np.array_equal(runner.infer_int(qx), q.forward_int(qx))
+    assert np.array_equal(runner.infer(x), q.forward(x))
+
+
 def host_random_matmuls(dev: Device, seed: int) -> None:
     """Random matrices (any shape that fits), both activation modes, raw INT32 results vs the model."""
     rng = random.Random(seed)
@@ -239,6 +260,13 @@ async def network_unsigned_input(dut):
     await setup(dut)
     dev, _ = make_device(dut)
     await bridge(host_network)(dev, 1, False)
+
+
+@cocotb.test()
+async def compiled_model(dut):
+    await setup(dut)
+    dev, _ = make_device(dut)
+    await bridge(host_compiled_model)(dev, 4)
 
 
 @cocotb.test(skip=not FULL)

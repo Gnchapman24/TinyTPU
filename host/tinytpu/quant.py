@@ -106,6 +106,25 @@ def mult_shift(r: ArrayLike) -> tuple[np.ndarray, np.ndarray]:
     return mult, shift
 
 
+def quantize_input(x: ArrayLike, scale: float, signed: bool, k: int) -> np.ndarray:
+    """Quantize float inputs ``(B, k)``: round to steps of ``scale``, then clamp to INT8
+    (``signed``) or UINT8. Returns int64. Shared by :class:`QModel` and the compiler's runtime."""
+    x = np.asarray(x, dtype=np.float64)
+    if x.ndim != 2 or x.shape[1] != k:
+        raise ValueError(f"inputs must have shape (B, {k}), got {x.shape}")
+    if not np.isfinite(x).all():
+        raise ValueError("inputs must be finite")
+    lo, hi = (-128, 127) if signed else (0, 255)
+    return np.clip(round_half_away(np.clip(x / scale, lo - 1, hi + 1)), lo, hi)
+
+
+def dequantize(acc: ArrayLike, out_scale: np.ndarray, relu: bool) -> np.ndarray:
+    """Float outputs from the last layer's INT32 accumulators: ``acc * out_scale`` per channel,
+    then the last layer's ReLU (done on the host). Shared by :class:`QModel` and the runtime."""
+    y = np.asarray(acc, dtype=np.float64) * out_scale
+    return np.maximum(y, 0.0) if relu else y
+
+
 @dataclass
 class QLayer:
     """One quantized layer.
@@ -212,11 +231,7 @@ class QModel:
         INT8 or UINT8. Returns int64."""
         if self.input_scale is None:
             raise ValueError("this model has no input scale; pass integer inputs to forward_int")
-        x = np.asarray(x, dtype=np.float64)
-        if x.ndim != 2 or x.shape[1] != self.k_in:
-            raise ValueError(f"inputs must have shape (B, {self.k_in}), got {x.shape}")
-        lo, hi = (-128, 127) if self.input_signed else (0, 255)
-        return np.clip(round_half_away(x / self.input_scale), lo, hi)
+        return quantize_input(x, self.input_scale, self.input_signed, self.k_in)
 
     def forward_int(self, qx: np.ndarray) -> np.ndarray:
         """Bit-exact integer reference: the last layer's INT32 accumulators for integer inputs.
@@ -243,8 +258,7 @@ class QModel:
         """Float logits from the last layer's accumulators (and its ReLU, done here on the host)."""
         if self.out_scale is None:
             raise ValueError("this model has no output scales")
-        y = np.asarray(acc, dtype=np.float64) * self.out_scale
-        return np.maximum(y, 0.0) if self.layers[-1].relu else y
+        return dequantize(acc, self.out_scale, self.layers[-1].relu)
 
     def forward(self, x: np.ndarray) -> np.ndarray:
         """Float in, float out, through the integer model: what the board computes."""
