@@ -329,6 +329,12 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
   - Don't change opcodes or encodings without asking.
   - The matmul instruction carries an `act_signed` mode field (see §2).
   - Functional tests run in both activation modes.
+- **Host compiler (planned, Phase 7 in `TASKS.md`).** Scope decided 2026-11-16:
+  - **Input:** the project's own Python layer API: a list of `Dense` layers with float NumPy weights and biases and an optional ReLU, plus calibration inputs. The compiler quantizes. Pre-quantized integer layers are accepted too, so tests can skip quantization. No framework dependency; importers (PyTorch, ONNX) may be added later on top.
+  - **Layers:** Dense + optional ReLU only. Each hidden layer is one `MATMUL` (bias mode) plus one `REQUANT`. No convolutions: the ISA has no strides.
+  - **Output:** the last layer is `MATMUL` only, and `INFER` reads its raw INT32 logits from `ACC`. The host dequantizes them, and does argmax.
+  - **Demo:** MNIST, with a small MLP trained in pure NumPy. The dataset is downloaded once into a cache outside the repo. Tests and CI never download it.
+  - Details that are still open (calibration method, memory allocation, batch handling, compiled-file format, MNIST source and model size) are settled in `docs/compiler.md` (task J7.1).
 
 ## 4. Repository layout (planned)
 
@@ -341,7 +347,8 @@ host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, 
               bringup.py (loopback board test CLI), selftest.py (full-design board
               self-test CLI), example.py (example matmul script), baseline.py (build
               metrics vs syn/baseline.json),
-              model.py (bit-exact reference model), later compiler
+              model.py (bit-exact reference model); planned (Phase 7): nn.py (float layer
+              API), quant.py (quantizer), compiler.py (code generation + runtime), mnist.py (demo)
 formal/       SymbiYosys .sby files and property wrappers
 syn/          Vivado: basys3.xdc, build.tcl (batch build of a top: reports, metrics JSON, ceiling
               check, bitstream), program.tcl (JTAG), ooc.tcl (per-module OOC synthesis + resource

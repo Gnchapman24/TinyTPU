@@ -88,3 +88,17 @@ Agents: update status here as part of the same change. Never do a **Human** task
 | [x] A6.1 | Agent | Architecture page with block and dataflow diagrams (array skew, tiling, requantization path). Done: `docs/architecture.md` with five hand-drawn SVGs in `docs/img/` (block diagram, array dataflow, tiling, tile timing, requantization path), plus throughput, resources and a verification map. | Phase 3 |
 | [x] A6.2 | Agent | Host driver user guide and an example script. Done: `docs/host.md`, `python -m tinytpu.selftest` (board self-test for H5.5), `python -m tinytpu.example`; both tested against the simulated board. | A2.5, A5.1 |
 | [ ] H6.3 | Human | Final review of the docs site; decide what to publish (README, GitHub Pages). | A6.1, A6.2 |
+
+## Phase 7 — Host compiler
+
+Scope decided 2026-11-16 (AGENTS.md §3, "Host compiler"): own Dense + ReLU layer API with float weights and calibration data, raw INT32 logits from the last layer, MNIST demo trained in NumPy.
+
+| ID | Owner | Task | Depends on |
+|---|---|---|---|
+| [ ] J7.1 | Joint | Compiler design page `docs/compiler.md`. Agent drafts: the layer API, the quantization math (per-channel weight scales, activation scales from calibration, bias rounding, choosing `M`/`s`, dequantizing logits), memory allocation, batch handling, the limit checks (each `docs/memory_map.md` limit, the K overflow rule, INFER's 4096-byte payloads), the compiled-file format, and the MNIST source and model size. Human approves the open choices. | — |
+| [ ] A7.2 | Agent | Quantizer `tinytpu.quant`: float `nn.Model` + calibration data → integer layers (INT8 weights, INT32 biases, `M`, `s`, ReLU, `act_signed` per layer). Tests: the `M`/`s` choice at its edges (s = 0, M at 65535, a too-large scale rejected), all-zero channels, bias rounding, K overflow rejected, quantized vs float accuracy on synthetic data. | J7.1 |
+| [ ] A7.3 | Agent | Code generation `tinytpu.compiler`: integer layers + target (N and depths, from `Info` or the defaults) + batch size → program, WBUF tiles, PTAB entries, and the input / output addresses. Rejects models that don't fit, with a message naming the limit. Tests: random models with sizes that aren't multiples of N, both input signedness, hidden layers with and without ReLU, at N = 2, 4, 8, run on `model.Machine` and compared bit-exactly with the chained `model.matmul` / `model.requant`; each limit just met and just exceeded. | A7.2 |
+| [ ] A7.4 | Agent | Runtime: load a compiled model onto a `Device` (checks N and depths against `INFO`), `infer()` with input quantization, batching and padding, and logit dequantization; save and load compiled models. Tests: on `Machine`, and an end-to-end test in `tb/test_tinytpu_top.py` (the simulated board must match `Machine` bit-exactly). | A7.3 |
+| [ ] A7.5 | Agent | MNIST demo `python -m tinytpu.mnist`: download with SHA-256 check into a cache outside the repo, NumPy MLP training, compile, then board accuracy and speed, with a check that the board matches `Machine` and a comparison with the float model. Tests use a tiny synthetic dataset, with no download. Docs: a user-guide section. | A7.4 |
+| [ ] H7.6 | Human | Run the MNIST demo on the board; report accuracy, agreement with `Machine`, and ms per image. Do H0.3 (1 ms latency timer) first, so the speed figure is meaningful. | A7.5, H0.3 |
+| [ ] A7.7 | Agent | Optional: rebuild `selftest`'s network check and `tinytpu.example` on the compiler, and remove their hand-written programs. | A7.4 |
