@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), the decoder (`instr_decode`), range checker (`range_check`), sequencer (`sequencer`), execution units (`matmul_ctrl`, `requant_ctrl`), the core without the host link (`tpu_core`), the packet engine (`cmd_engine`), the board top level (`tinytpu_top`), the host API (`tinytpu.device`), the compiler's float layers and quantizer (`tinytpu.nn`, `tinytpu.quant`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), the decoder (`instr_decode`), range checker (`range_check`), sequencer (`sequencer`), execution units (`matmul_ctrl`, `requant_ctrl`), the core without the host link (`tpu_core`), the packet engine (`cmd_engine`), the board top level (`tinytpu_top`), the host API (`tinytpu.device`), the compiler's float layers, quantizer and code generation (`tinytpu.nn`, `tinytpu.quant`, `tinytpu.compiler`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -345,6 +345,10 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
     - `QModel.forward_int` chains `model.matmul` / `model.requant`: the integer reference that compiled programs must match bit-exactly. `QModel` can also be built from integer layers directly.
     - **Never round through an int64 cast of a large float.** `r · 2**63` overflowed and wrapped negative, so `M` passed the `≤ 65535` test (found by the tests). `mult_shift` works in Python integers, and `round_half_away` rejects magnitudes of `2**62` or more.
     - **Never round with `floor(x + 0.5)`:** the addition itself rounds `0.49999999999999994` up to 1. Use the fractional part, `x - floor(x) >= 0.5`, which is exact.
+  - **Implemented (A7.3):** `tinytpu.compiler`: `Target` (N, depths, max payload; `default(n)` or `from_info(info)`), `compile_model`, `max_batch`, `check_fit`, `FitError` (lists every exceeded limit), `Compiled` (program, tiles, PTAB arrays, I/O addresses, tag, scales).
+    - Generated words are checked with `isa.decode_error` and `model.range_error` before they are returned.
+    - `tb/test_compiler.py` runs images on `model.Machine`; for 784-128-10 at N = 8 the default batch is 5 (1,600 tiles, 144 channels), as `docs/compiler.md` says.
+    - ABUF regions are reused by design: after a run, each region holds only the last hidden layer written to it.
 
 ## 4. Repository layout (planned)
 
