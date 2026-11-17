@@ -225,7 +225,7 @@ One command does every step, and caches each result:
 4. **Run** the 10,000 test images (or `--count`) on the board.
 5. **Report:**
    - float, integer-reference and board accuracy
-   - how many board results equal `Machine`'s exactly (must be all)
+   - how many board results equal the integer reference exactly (must be all), and whether the first batch equals `Machine`'s
    - ms per image and images per second
    - a few test digits drawn as text, with the board's prediction
 
@@ -233,15 +233,19 @@ Without `--port`, it stops after step 3 and reports the float and integer accura
 
 ### Model size
 
-784-128-10. The figures are estimates for N = 8, at 1 Mbaud, with the latency timer at 1 ms:
+784-128-10. Accuracy was measured on the 10,000 MNIST test images (seed 0, 8 epochs). The speed figures are estimates for N = 8, at 1 Mbaud, with the latency timer at 1 ms; H7.6 measures them on the board.
 
-| Model | Weight tiles | Channels | B | Per INFER on the wire | Per image | Expected accuracy |
-|---|---|---|---|---|---|---|
-| **784-128-10** | 1,600 / 2,048 | 144 / 512 | 5 | 3,937 B out, 335 B back: ~43 ms | ~9 ms | ~98% |
-| 196-64-10 (14×14) | 216 / 2,048 | 80 / 512 | 20 | 4,017 B out, 1,295 B back: ~53 ms | ~2.7 ms | ~97% |
+| Model | Option | Weight tiles | Channels | B | Per INFER on the wire | Per image (estimate) | Float / integer accuracy |
+|---|---|---|---|---|---|---|---|
+| **784-128-10** | default | 1,600 / 2,048 | 144 / 512 | 5 | 3,937 B out, 335 B back: ~43 ms | ~9 ms | 97.50% / 97.48% |
+| 196-128-10 (14×14) | `--size 14` | 432 / 2,048 | 144 / 512 | 20 | 4,017 B out, 1,295 B back: ~53 ms | ~2.7 ms | 97.14% / 97.13% |
+| 196-64-10 (14×14) | `--size 14 --hidden 64` | 216 / 2,048 | 80 / 512 | 20 | as above | ~2.7 ms | 96.07% / 96.00% |
 
+- Quantization costs at most 0.07 points of accuracy.
 - Compute is negligible either way: under 0.3 ms per INFER for 784-128-10.
-- 784-128-10 shows off weights staying on-chip: 78% of `WBUF`. `--size 14` would select the smaller one.
+- 784-128-10 shows off weights staying on-chip: 78% of `WBUF`.
+- Training takes about 35 s on the development PC (NumPy, 8 epochs). The float weights and the compiled model are cached next to the data.
+- The demo compares every board output with the integer reference (`QModel.forward_int`) and the first batch with `model.Machine`. Running all 10,000 images on `Machine` would take too long in Python; the tests already show `Machine` equals `forward_int` exactly.
 
 ## Testing
 
@@ -250,7 +254,8 @@ Without `--port`, it stops after step 3 and reports the float and integer accura
 | `tb/test_quant.py` | `M`/`s` at their edges (`s = 0`, `M` at 65535, `r` too large, `r` tiny), all-zero channels and activations, ties in rounding, bias overflow rejected, quantized vs float accuracy on synthetic data |
 | `tb/test_compiler.py` | Random models with sizes that aren't multiples of N, signed and unsigned input, hidden layers with and without ReLU, at N = 2, 4 and 8: `Machine` must equal `forward_int` bit-exactly. Each limit just met and just exceeded. The save/load round trip. The HALT-tag check. |
 | `tb/test_tinytpu_top.py` (new test) | A compiled model on the simulated board, through the real `Device` and `Link`: equal to `Machine` bit-exactly |
-| `tb/test_mnist.py` | IDX parsing, the hash check and the cache, with synthetic files; training converges on a separable synthetic set |
+| `tb/test_mnist.py` | IDX parsing, the hash check and the cache, served from a local `file://` folder; the training gradient against finite differences; that `run_on_board` catches a wrong output; the command line without a board |
+| `tb/test_tinytpu_top.py` (`mnist_demo`) | The demo's board half on synthetic 'digits', through `Device` on the simulated board |
 
 As with the rest of the project, each test is checked against injected bugs (a wrong rounding, an off-by-one region size, a swapped tile order) before it counts as done.
 

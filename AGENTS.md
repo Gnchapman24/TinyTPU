@@ -2,7 +2,7 @@
 
 A minimal INT8 Tensor Processing Unit on a Digilent Basys3 FPGA. Hardware is written in SystemVerilog. Host tooling and tests are in Python.
 
-> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), the decoder (`instr_decode`), range checker (`range_check`), sequencer (`sequencer`), execution units (`matmul_ctrl`, `requant_ctrl`), the core without the host link (`tpu_core`), the packet engine (`cmd_engine`), the board top level (`tinytpu_top`), the host API (`tinytpu.device`), the compiler's float layers, quantizer and code generation (`tinytpu.nn`, `tinytpu.quant`, `tinytpu.compiler`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
+> **Status:** early stage. Tooling, CI, `rtl/isa_pkg.sv`, the UART (`uart_rx`, `uart_tx`), `sync_fifo`, `crc16_ccitt`, `reset_gen`, the reference model `tinytpu.model`, the PE (`pe`), the systolic array (`systolic_array`), the accumulators (`acc_unit`), the requantizer (`requant`), the buffers (`buffer_ram`), the decoder (`instr_decode`), range checker (`range_check`), sequencer (`sequencer`), execution units (`matmul_ctrl`, `requant_ctrl`), the core without the host link (`tpu_core`), the packet engine (`cmd_engine`), the board top level (`tinytpu_top`), the host API (`tinytpu.device`), the host compiler (`tinytpu.nn`, `tinytpu.quant`, `tinytpu.compiler`) and its MNIST demo (`tinytpu.mnist`), and the bring-up design (`loopback_echo`, `loopback_top`, which builds in Vivado) exist; see `TASKS.md` for progress. Anything below marked **(planned)** does not exist yet. Create it to match this file; don't assume it's already there. Items marked **OPEN** are undecided. Ask before choosing, and record the answer here.
 
 ## 1. Target hardware (fixed)
 
@@ -354,6 +354,11 @@ All pins above, plus the 16 switches and 16 LEDs, were checked against Digilent'
     - `Runner.infer` / `infer_int` split any number of rows into batches (the last one zero-padded), and raise `RunError` unless every run halts OK with the program's tag. `Runner.verify()` reads the image back.
     - `Compiled.save` / `from_file`: one `.npz`, `allow_pickle=False`, format 1; loading recomputes the tag and refuses a corrupted file.
     - `quant.quantize_input` / `quant.dequantize` are shared by `QModel` and the runtime, so the two can't drift apart. Inputs are clipped before rounding, so huge values saturate instead of failing.
+  - **Implemented (A7.5):** `python -m tinytpu.mnist` (user guide `docs/host.md` §6).
+    - MNIST comes from `https://ossci-datasets.s3.amazonaws.com/mnist/`; SHA-256 hashes are pinned in `mnist.FILES` (their MD5 sums matched torchvision's). The cache is `$TINYTPU_DATA`, `%LOCALAPPDATA%\tinytpu\mnist` or `~/.cache/tinytpu/mnist`, and also holds the trained weights and compiled models.
+    - Measured (seed 0, 8 epochs, about 35 s of training): 784-128-10 float 97.50%, integer 97.48%; 196-128-10 (`--size 14`) 97.14% / 97.13%; 196-64-10 96.07% / 96.00%.
+    - On the board, every output is compared with `QModel.forward_int`, and the first batch with `model.Machine` (all 10,000 images on `Machine` would take too long in Python).
+    - Tests never download: `tb/test_mnist.py` serves synthetic IDX files from a `file://` folder and patches `mnist.FILES`.
 
 ## 4. Repository layout (planned)
 
@@ -366,8 +371,8 @@ host/tinytpu/ Python package `tinytpu` (installed editable by uv sync): isa.py, 
               bringup.py (loopback board test CLI), selftest.py (full-design board
               self-test CLI), example.py (example matmul script), baseline.py (build
               metrics vs syn/baseline.json),
-              model.py (bit-exact reference model); planned (Phase 7): nn.py (float layer
-              API), quant.py (quantizer), compiler.py (code generation + runtime), mnist.py (demo)
+              model.py (bit-exact reference model), nn.py (float layer API), quant.py
+              (quantizer), compiler.py (code generation + runtime), mnist.py (MNIST demo)
 formal/       SymbiYosys .sby files and property wrappers
 syn/          Vivado: basys3.xdc, build.tcl (batch build of a top: reports, metrics JSON, ceiling
               check, bitstream), program.tcl (JTAG), ooc.tcl (per-module OOC synthesis + resource

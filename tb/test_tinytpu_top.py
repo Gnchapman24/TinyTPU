@@ -9,7 +9,8 @@ matmul / requant math and Machine).
 
 Tests: INFO; a two-layer network with sizes that are not multiples of N, in both activation
 modes, uploaded with WRITE, run with RUN and with INFER; a model compiled with tinytpu.compiler
-and run through its runtime; random matrices; the board self-test
+and run through its runtime; the MNIST demo's board half on synthetic digits; random matrices;
+the board self-test
 script (tinytpu.selftest) itself; RESET while running; and the link's recovery through the real
 board (a corrupted request, a lost reply). They run with
 CLKS_PER_BIT = 8 for speed, and a shorter set at the real CLKS_PER_BIT = 100.
@@ -30,11 +31,12 @@ from cocotb.task import bridge, resume
 from cocotb.triggers import ClockCycles, FallingEdge
 from cocotb_tools.runner import get_runner
 
-from tinytpu import compiler, example, isa, model, nn, quant, selftest
+from tinytpu import compiler, example, isa, mnist, model, nn, quant, selftest
 from tinytpu.device import Device
 from tinytpu.isa import AccMode, Mem, SeqErr, SeqState
 from tinytpu.link import Link
 from uart_bfm import UartSink, UartSource
+from test_mnist import quadrant_images
 
 ROOT = Path(__file__).resolve().parents[1]
 N = int(os.environ.get("TINYTPU_N", "4"))
@@ -170,6 +172,24 @@ def host_compiled_model(dev: Device, seed: int) -> None:
     assert np.array_equal(runner.infer(x), q.forward(x))
 
 
+def host_mnist_demo(dev: Device, seed: int) -> None:
+    """tinytpu.mnist's board half: train on synthetic 8x8 'digits', compile for INFO, classify."""
+    rng = np.random.default_rng(seed)
+    side, hidden = (4, 6) if N == 2 else (8, 12)       # at N = 2, 64-12-10 needs 192 of WBUF's 64 tiles
+    train_x, train_y = quadrant_images(rng, 400, side)
+    test_x, test_y = quadrant_images(rng, 20, side)
+    net = mnist.train(mnist.prepare(train_x), train_y, hidden=hidden, epochs=80, out=lambda _: None)
+    q = quant.quantize(net, mnist.prepare(train_x[:100]))
+    c = compiler.compile_model(q, compiler.Target.from_info(dev.info()))
+    runner = c.load(dev)
+    assert runner.verify()
+    x = mnist.prepare(test_x)
+    res = mnist.run_on_board(runner, q, x, progress=c.batch, out=lambda _: None)
+    assert res.exact == len(x) and res.machine_ok
+    # Exactness is the point; the accuracy shows the model learned (80 epochs: 100% on 5 seeds offline).
+    assert mnist.accuracy(q.dequantize(res.acc), test_y) == mnist.accuracy(q.forward(x), test_y) >= 0.9
+
+
 def host_random_matmuls(dev: Device, seed: int) -> None:
     """Random matrices (any shape that fits), both activation modes, raw INT32 results vs the model."""
     rng = random.Random(seed)
@@ -267,6 +287,13 @@ async def compiled_model(dut):
     await setup(dut)
     dev, _ = make_device(dut)
     await bridge(host_compiled_model)(dev, 4)
+
+
+@cocotb.test(skip=not FULL)
+async def mnist_demo(dut):
+    await setup(dut)
+    dev, _ = make_device(dut)
+    await bridge(host_mnist_demo)(dev, 5)
 
 
 @cocotb.test(skip=not FULL)

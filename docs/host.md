@@ -112,6 +112,21 @@ For a whole network:
 
 The [`tinytpu.device` API](api/device.md) lists every method. The [ISA](isa.md) and the [memory map](memory_map.md) define the layouts.
 
+## 6. MNIST digits on the board
+
+`python -m tinytpu.mnist` trains a small neural network on the MNIST handwritten digits, compiles it with the [host compiler](compiler.md), and classifies the 10,000 test digits on the board:
+
+```powershell
+uv run --no-default-groups python -m tinytpu.mnist                   # download, train, compile: no board needed
+uv run --no-default-groups python -m tinytpu.mnist --port COM7       # ... then run on the board
+```
+
+- **First run:** it downloads MNIST (about 11 MB) into `%LOCALAPPDATA%\tinytpu\mnist` and checks each file's SHA-256, then trains for about half a minute. Both are cached for later runs.
+- **On the board:** it loads the 784-128-10 model (about 100 KB of weights; reading it back checks it), then sends the test digits 5 at a time, one `INFER` each.
+- **The report:** float, integer and board accuracy (about 97.5%), how many of the board's outputs equal the integer reference exactly (all of them must), the speed in ms per digit, and a few digits drawn as text with the board's answer. It ends with `PASS`, or `FAIL` if any output differs.
+- **Options:** `--count` (fewer digits), `--size 14` (14×14 digits: smaller and about 4× faster), `--hidden`, `--epochs`, `--seed`, `--baud 115200` for the fallback builds, `--data-dir` (or `TINYTPU_DATA`) for another cache folder.
+- The demo overwrites the board's memories, like the self-test.
+
 ## LEDs
 
 | LED | Meaning |
