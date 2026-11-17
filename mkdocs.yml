@@ -31,6 +31,8 @@ nav:
       - tinytpu.device: api/device.md
       - tinytpu.bringup: api/bringup.md
       - tinytpu.selftest, example: api/selftest.md
+      - tinytpu.nn: api/nn.md
+      - tinytpu.quant: api/quant.md
       - tinytpu.baseline: api/baseline.md
 
 # Python API pages use `::: module.path` blocks (Google-style docstrings).
